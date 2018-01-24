@@ -1,0 +1,1859 @@
+#!/usr/bin/perl
+#______________________________________________________________________________
+# Title     : DaliLite
+# Usage     : DaliLite [option arguments]
+#
+# Function  : This is the main DALI calling many programs.
+#           -------------------------------------------------------------
+#		adapted from serverparser.pl -- EBI version 11 November 1996
+#           -------------------------------------------------------------
+#
+#            (c) L. Holm 1993-2008 
+#
+#           -------------------------------------------------------------
+#
+# Author    : liisa.holm@helsinki.fi 
+# Category  :
+# Returns   :
+# Version   : 3.2  Dec 2008
+#------------------------------------------------------------------------------
+#
+#>> use GetOptions
+#>> lfirstonly=.false. if -pairwise, otherwise lfirstonly=.true. 
+#>> lfirstonly option !
+#>> always process all wolf hits! no best.wolf/rest.wolf
+
+if($#ARGV < 0){ &info; exit; }
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Check the DALI_SERVER_HOME env setting or you modify it here directly
+#___________________________________________________________________________
+if(exists $ENV{'DALI_SERVER_HOME'}){
+    $DALI_SERVER_HOME=$ENV{'DALI_SERVER_HOME'};
+    if($DALI_SERVER_HOME=~/\/ *$/){ chop($DALI_SERVER_HOME) }
+}else{
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~`
+    # The DaliLite server home dir if unset in environment: set the variable 
+    # $HOMEDIR in the Makefile, which will replace the below default location 
+    # during `make install`.
+    # Comment the second line and uncomment the first line to have 
+    # DALI_SERVER_HOME defaulting to the current directory.
+    #________________________________________________________________________
+    #$DALI_SERVER_HOME=$ENV{'PWD'};
+    $DALI_SERVER_HOME="/data/backup/zope_data/dali_server/DaliLite_3.3/";  
+}
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Check the DALI_DATA_HOME env setting or you modify it here directly
+#___________________________________________________________________________
+if(exists $ENV{'DALI_DATA_HOME'}){
+    $DALI_DATA_HOME=$ENV{'DALI_DATA_HOME'};
+    if($DALI_DATA_HOME=~/\/ *$/){ chop($DALI_DATA_HOME) }
+}else{
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~`
+    # The DaliLite data home dir: defaults to current directory if unset 
+    # in environment.
+    # Uncomment and change the second line to explicitly set DALI_DATA_HOME
+    #________________________________________________________________________
+    #$DALI_DATA_HOME=$ENV{'PWD'};
+    $DALI_DATA_HOME=$DALI_SERVER_HOME; #"/home/you/DaliLite/";
+}
+
+$| = 1;					# force flush on selected output
+$TRUE = 1;
+$FALSE = 0;
+# branch-and-bound search (Parsi) for reverse pair
+$run_reverse=$FALSE; # will be set to TRUE for symmetric -pairwise comparison
+# minimum sequence length
+$MINLEN=30;
+# minimum number of secondary structure elements to run 3D lookup and Parsi
+# else run Soap only
+$MINSSE=2;
+$cut2=2.0;				# 2nd neighbour shell used in db-search
+$nbest=1;				# output hits Z>2 or nbest Z>0
+$nbestpercd2=1;				# output n best hits per matched structure
+$MAX_GAP=80; # used by -update to check complete domain coverage
+
+# hardcoded dimension in puu.f
+$max_filename=80;
+
+# HTML output from DaliLite -pairwise
+$highlightcolor='00FFDD'; # cyan 
+
+#----------------------------------------------------------------------------
+# directories, data files
+#----------------------------------------------------------------------------
+
+$WORKDIR       ="$DALI_DATA_HOME";
+$DALIDATDIR_1    ="$DALI_DATA_HOME\/DAT\/";  
+unless(-d $DALIDATDIR_1){ mkdir ("$DALIDATDIR_1", 0777) }
+$DALIDATDIR_2	=$DALIDATDIR_1;
+
+$BIN_PATH      ="$DALI_SERVER_HOME\/Bin";
+
+$lockfile= "dali.lock"; ## this is generated in PWD. Needs to be removed if it exists before DaliLite runs
+
+# Database search: blast PDB90, WOLF90.dat, pdb90.attributes_1
+$DBDIR="$DALI_SERVER_HOME\/DB\/";
+$PDB90_list="$DBDIR\/pdb90.list";
+$PDB100_list="$DBDIR\/pdb.list";
+$WOLFDB="$DBDIR\/WOLF90.dat";
+$BLASTDB="$DBDIR\/pdb.fasta";
+$BLAST90DB="$DBDIR\/pdb90.fasta";
+$TMPFILE="test.f";
+$MYSQL_DATABASE='dali'; # used by walk.pl
+$MYSQL_DALIDB_DATABASE='dalidb'; # used by dump_sql_dccp.pl
+$RSDB40_v2="$DBDIR\/nrdb40_v2.fasta"; # used by Blast_GTG.py
+
+
+#----------------------------------------------------------------------------
+# externals
+#----------------------------------------------------------------------------
+$DSSP_EXE       ="$BIN_PATH\/dssp";
+
+$dssp ="$DSSP_EXE ARG1 ARG2";	# pdbfile dsspfile
+$BLAST_EXE="/data/bin/blastall -p blastp -d $BLASTDB -m 8 -i ARG1 > ARG2 "; # test.f, ranklist_blast
+$BLAST90_EXE="/data/bin/blastall -p blastp -d $BLAST90DB -m 8 -i ARG1 > ARG2 "; # test.f, ranklist_blast
+
+$python="/data/backup/python/bin/python"; 
+
+#----------------------------------------------------------------------------
+# dependencies
+#----------------------------------------------------------------------------
+
+@tmpfiles=('fort.*','subunits.puu','units.puu',$lockfile,'list0',
+	       'domains.puu','dali.default','puu.default','seq.*','tmp.x',
+	       'x.x','x.tmp','listself','best.wolf','rest.wolf','x.jnk');
+
+#----------------------------------------------------------------------------
+# sub: info
+#----------------------------------------------------------------------------
+
+sub info {
+	print <<"EOS";
+*****************************************************************************
+
+DaliLite is a program for pairwise structure comparison.
+
+Reference:
+Holm, L., Kaariainen, S., Rosenstrom, P., Schenkel, A. 
+Searching protein structure databases with DaliLite v.3
+Bioinformatics 2008
+
+*****************************************************************************
+
+Usage:
+	DaliLite [options arguments]
+
+Long help:
+	DaliLite -help
+
+Pairwise structure comparison:
+	DaliLite -pairwise <pdbfile1> <pdbfile2> <jobid>
+
+Database searching:
+	DaliLite -quick <pdbfile> <jobid>
+	DaliLite -Q <pdbfile> <jobid>
+
+Advanced options:
+	# read structure data
+	DaliLite -readbrk <pdbfile> <pdbid>
+
+	# generate alignments
+	DaliLite -align <code1> <code2>
+	DaliLite -list <code> <one column listfile>
+	DaliLite -AllAll <one column listfile>
+	DaliLite -search <code1> <list file of representatives>
+	
+	# generate output
+	DaliLite -format <code> <alignment file> <one column listfile> <htmlfile>
+
+	# database update for -quick search
+	DaliLite -update <one column listfile>
+
+	# database update for -Q search
+	DaliLite -Update <one column listfile>
+
+	# generate transitive alignments 
+	DaliLite -walk <one column listfile>
+
+	# database dump
+	DaliLite -dump <pdbid[chainid]> <jobid>
+
+*****************************************************************************
+
+EOS
+
+}
+
+sub help {
+	print <<"EOS";
+
+DaliLite options:
+
+	-help 	This text.
+
+Simple use:
+
+	-pairwise <pdbfile1> <pdbfile2> <jobid> 
+		Performs the whole procedure of reading PDB files and
+		computing the structural alignments for all chains in 
+		pdbfile1 against all chains in pdbfile2. Creates a set 
+		of HTML pages linked from the top page 'index.html'. 
+		The first structure is called 'mol1' and the second 
+		'mol2'. All data are stored in the current work 
+		directory, overwriting any previous results generated 
+		using this option. 
+
+		The HTML page calls http://ekhidna.biocenter.helsinki.fi/dali_server/qz-test?
+		jobid=<jobid>
+		
+		Example:
+			DaliLite -pairwise /pdb/1wsy.brk /pdb/2kau.brk test > log
+
+	-quick <pdbfile> <jobid>
+		Searches PDB for similar structures to the input structure.
+		The search has two stages. First, fast feature filters are
+		used to try and identify a strong similarity to any structure
+		already in the PDB. Strong matches have a Z-score greater than 20
+		or nres/10 or sequence identity above 20 %. The feature filters
+		in use are Blast and GTG sequence comparison and 3D lookup
+		secondary structure comparison. If no strong match
+		is found, then all structures in PDB90 are compared using
+		exhaustive search (Parsi method) with refinement by Monte
+		Carlo optimization. In the second stage, transitive 
+		alignments are extended to any structure in the PDB with a 
+		Z-score above 2 or until 500 matches have been found. All 
+		chains in the query pdbfile are compared. Results are linked 
+		from the top page 'index.html'.
+		
+		The HTML page calls http://ekhidna.biocenter.helsinki.fi/dali_server/qz-test?
+                jobid=<jobid>
+
+		This option requires databases in the DB subdirectory and 
+		all PDB chains in the DAT subdirectory. All data generated 
+		during the search are stored in the current work directory, 
+		overwriting any previous results. This option is used by
+		the Dali Server in Helsinki (http://ekhidna.biocenter.
+		helsinki.fi/dali_server).
+
+		Example:
+			Dalilite -quick /pdb/1wsy.brk > log
+
+	-Q <pdbfile> <jobid>
+		Identical to -quick with the exception that GTG sequence 
+		comparison has been dropped from the feature filters.
+
+		Example:
+			DaliLite -Q /pdb/1wsy.brk > log
+
+Advanced options:
+	
+	-readbrk <pdbfile> <pdbid>
+
+		Converts PDB file <pdbfile> to internal data representation.
+		<pdbid> is a four-character unique identifier.
+
+		Examples:
+			DaliLite -readbrk 1ppt.brk 1ppt
+			DaliLite -readbrk /data/pdb/1ppt.brk 1ppt
+			DaliLite -readbrk /data/pdb/pdb1ppt.ent 1ppt
+
+		Each PDB entry is split into chains and output is a set of
+		<pdbid><chainid>.dat files where the chain identifiers
+		<chainid> are extracted automatically from the PDB file.
+
+	-align <code1> <code2>
+
+		Pairwise alignment of two structures using exhaustive
+		search (Parsi method) with refinement by Monte Carlo
+		optimization. <codeN> is a unique-identifier with the
+		chain-identifier appended.  Output is automatically
+		appended to the alignment file <code1>.dccp
+
+		Examples:
+			DaliLite -align 1ppt 1bba
+			DaliLite -align 1wsyA 2kauC
+
+		PDB structures must first be read in using the -readbrk
+		option.
+
+    	-list <code1> <one column list file>
+    		Performs one-against-all pairwise alignments using 3D lookup 
+		and exhaustive search (Parsi method), or Soap if the query 
+		structure has few secondary structure elements. Monte Carlo 
+		optimization is used for refinement.
+
+		Examples:
+			DaliLite -list 1ppt dolist
+			DaliLite -list 1wsyA dolist
+
+		All structures must first be read in using the -readbrk
+		option.
+
+    	-AllAll <one column list file>
+    		Performs all-against-all pairwise alignments using 3D lookup 
+		and exhaustive search (Parsi method), or Soap if the query 
+		structure has few secondary structure elements. Monte Carlo 
+		optimization is used for refinement.
+
+		Example:
+			DaliLite -AllAll dolist
+
+		All structures must first be read in using the -readbrk
+		option.
+
+	-format <code1> <alignment file> <list file of representatives> <outfile>
+
+		Converts the internal dccp-format to an HTML-format.  
+
+		Examples:
+			DaliLite -format 1ppt  1ppt.dccp list0 1ppt.html
+			DaliLite -format 1wsyA 1wsyA.dccp list0 1wsyA.html
+
+		Alignments should first be generated using the -align or
+		-search options. Requires DSSP files for all entries in list0. 
+
+	-update <one column list file>
+		Incremental update of the databases required by the -quick search.
+		New structures are added to the structure similarity graph. If
+		a strong match is found, the search terminates (c.f. -quick).
+		If no strong match is found, the new structure is compared against
+		the whole PDB90.
+
+	-Update <one column list file>
+		Identical to -update except that GTG sequence comparison has
+		been dropped from the feature filters.
+
+	-walk <one column list file>
+		Dump transitive alignments from SQL database into DCCP files.
+
+	-dump <pdbid[chainid]> <jobid>
+		Generate HTML pages for query structure(s), reading pre-computed
+		alignment data from dalidb database. Overwrites DCCP files in
+		current working directory for each chain in query.
+
+*****************************************************************************
+
+DaliLite methods implemented as standalone programs:
+
+	DSSP (dsspCMBI)		Kabsch W. & Sander C. (1983) Dictionary of
+				protein secondary structure: Pattern
+				recognition of hydrogen-bonded and geometrical
+				features, 22:2577-2637.
+
+	Puu			Holm, L., & Sander, C. (1994). Parser for
+				protein folding units. Proteins, 19, 256-268.
+
+	3D lookup (Wolf)	Holm,L., & Sander, C. (1995). 3-D lookup:
+				fast protein structure database searches at
+				90 % reliability. ISMB'95, 179-187.
+
+	Soap			J Mol Biol 1996 May 24;258(5):871-92. A
+				surface of minimum area metric for the
+				structural comparison of proteins. Falicov A,
+				Cohen FE
+
+	Parsi			Holm, L., & Sander, C. (1996). Mapping the
+				protein universe. Science 273, 595-602.
+
+	Monte Carlo (Dalicon)	Holm, L., & Sander, C. (1993). Protein
+				structure comparison by alignment of distance
+				matrices. J. Mol. Biol., 233, 123-138.
+
+*****************************************************************************
+
+Contact: liisa.holm\@helsinki.fi
+
+*****************************************************************************
+
+EOS
+}
+
+#----------------------------------------------------------------------------
+# end sub: info
+#----------------------------------------------------------------------------
+
+
+#----------------------------------------------------------------------------
+# THE MAIN starts here
+#----------------------------------------------------------------------------
+
+#print "\n", 'Running &dali_suite',  "\n\n";
+&dali_suite;
+
+#----------------------------------------------------------------------------
+# lock directory
+#----------------------------------------------------------------------------
+
+if (-s $lockfile) { die "Directory is locked by $lockfile\n\tthere may be another DaliLite process running in this work directory\n\t or, the previous run crashed: remove the dali.lock file \n"; }
+    else { &system_cmd("echo lock  > $lockfile"); }
+
+#----------------------------------------------------------------------------
+# dali,puu-defaults
+#----------------------------------------------------------------------------
+
+#print "\n Running \$dalidefault\n";
+&system_cmd($dalidefault,1);
+
+print "\n Running \&check_arguments_and_select_action_DaliLite(\@ARGV) \n";
+&check_arguments_and_select_action_DaliLite(@ARGV);
+
+# clean up
+&system_cmd("rm -f @tmpfiles");
+
+exit;
+
+#----------------------------------------------------------------------------
+# end main
+#----------------------------------------------------------------------------
+
+
+
+#______________________________________________________________________________
+# Title     : dali_suite
+# Usage     :
+# Function  : to make system calls to Fortran programs with all required arguments.
+# Example   :
+# Keywords  :
+# Options   :
+# Author    : holm@ebi.ac.uk, jong@ebi.ac.uk
+# Category  :
+# Returns   :
+# Version   : 1.1
+#------------------------------------------------------------------------------
+sub dali_suite {
+	# perl called with script name, so need not define perl path inside script
+     $puudefault="perl $DALI_SERVER_HOME\/Bin\/forwarder.pl \"#lhetatm\" TRUE \"#printdepth\" " .
+         "-99 \"#lsplit\" TRUE > puu.default";
+     $puu="perl $DALI_SERVER_HOME\/Bin\/forwarder.pl ARG1 ARG2 ARG3 END |  " .
+         "$DALI_SERVER_HOME\/Bin\/puu";    # code, pdbfile, dsspfile
+     $puutos="perl $DALI_SERVER_HOME\/Bin\/forwarder.pl units.puu ARG1 $DALIDATDIR_1 | " .
+         "$DALI_SERVER_HOME\/Bin\/puutos"; # dsspfile
+
+     # no splitting best/rest!
+     $wolf="perl $DALI_SERVER_HOME\/Bin\/forwarder.pl $DALIDATDIR_1 $DALIDATDIR_2 4.0 20 12.0 | " .
+         "$DALI_SERVER_HOME\/Bin\/wolf | grep WOLFITZ | perl $DALI_SERVER_HOME\/Bin\/pipeforwarder.pl".
+         " $DALIDATDIR_1 $DALIDATDIR_2 WOLF 1.0 10 | $DALI_SERVER_HOME\/Bin\/dp |  " .
+         "$DALI_SERVER_HOME\/Bin\/pipedccp | perl $DALI_SERVER_HOME\/Bin\/pipeforwarder.pl".
+	 " $DALIDATDIR_1 $DALIDATDIR_2 F | $DALI_SERVER_HOME\/Bin\/dalicon > \/dev\/null"; # Zcut,Nbest
+	 # reads list1,list2
+
+     #>> no splitting best/rest!
+     $soap="perl $DALI_SERVER_HOME\/Bin\/forwarder.pl $DALIDATDIR_1 $DALIDATDIR_2 4.0 20 | " .
+         "$DALI_SERVER_HOME\/Bin\/soap4 | grep WOLFITZ | perl $DALI_SERVER_HOME\/Bin\/pipeforwarder.pl".
+         " $DALIDATDIR_1 $DALIDATDIR_2 WOLF 1.0 10 | $DALI_SERVER_HOME\/Bin\/dp |  " .
+         "$DALI_SERVER_HOME\/Bin\/pipedccp | perl $DALI_SERVER_HOME\/Bin\/pipeforwarder.pl".
+	 " $DALIDATDIR_1 $DALIDATDIR_2 F | $DALI_SERVER_HOME\/Bin\/dalicon > \/dev\/null"; # Zcut,Nbest
+	 # reads list1,list2
+
+     $parsi="perl $DALI_SERVER_HOME\/Bin\/forwarder.pl $DALIDATDIR_1 $DALIDATDIR_2 TRUE | $DALI_SERVER_HOME\/Bin\/parsi";
+     $parsi_suboptimal="perl $DALI_SERVER_HOME\/Bin\/forwarder.pl $DALIDATDIR_1 $DALIDATDIR_2 FALSE | $DALI_SERVER_HOME\/Bin\/parsi";
+     $filter95="perl $DALI_SERVER_HOME\/Bin\/forwarder.pl $DALIDATDIR_1 $DALIDATDIR_2 2.0 4.0 3 |  " .
+             "$DALI_SERVER_HOME\/Bin\/filter95fitz; echo filter95 done";
+     $pipe96="sort -nr fort.96 | perl $DALI_SERVER_HOME\/Bin\/pipe96.pl 1.0 $nbest | " . # let through best only per cd1cd2 pair
+             "perl $DALI_SERVER_HOME\/Bin\/pipeforwarder.pl $DALIDATDIR_1 |  " .
+             "$DALI_SERVER_HOME\/Bin\/pipe | perl $DALI_SERVER_HOME\/Bin\/pipeforwarder.pl".
+	     " $DALIDATDIR_1 $DALIDATDIR_2 F | $DALI_SERVER_HOME\/Bin\/dalicon > \/dev\/null";#zcut,Nbest 
+     $pipe96_1="sort -nr fort.96 | perl $DALI_SERVER_HOME\/Bin\/pipe96.pl 1.0 $nbest | " .
+             "perl $DALI_SERVER_HOME\/Bin\/pipeforwarder.pl $DALIDATDIR_1 |  " .
+             "$DALI_SERVER_HOME\/Bin\/pipe | perl $DALI_SERVER_HOME\/Bin\/pipeforwarder.pl".
+	     " $DALIDATDIR_1 $DALIDATDIR_2 F | $DALI_SERVER_HOME\/Bin\/dalicon > \/dev\/null";#zcut,Nbest
+     $domainparser="cat ARG1 | perl $DALI_SERVER_HOME\/Bin\/sortdccp.pl | " .
+         "perl $DALI_SERVER_HOME\/Bin\/pipeforwarder.pl $DALIDATDIR_1 $DALIDATDIR_2 DCCP 2.0 10 | " .
+         "$DALI_SERVER_HOME\/Bin\/dp >> ARG2"; # dccpfile-in dccpfile-out
+
+     $dump_sql_dccp="perl $DALI_SERVER_HOME\/Bin\/dump_sql_dccp.pl ARG1 > ARG2"; # query_pdbid/cd1 listfile
+
+     # dofssp outputs only the best alignment per sbjct
+     # dofssp2 creates cd1.result
+     $dofssp_plain="perl $DALI_SERVER_HOME\/Bin\/sortdccp_z.pl < ARG2 | perl $DALI_SERVER_HOME\/Bin\/fsspfilter.pl ARG1 $cut2 $nbest $nbestpercd2 | " .
+         "perl $DALI_SERVER_HOME\/Bin\/pipeforwarder.pl ARG1 99999 $DALIDATDIR_1\/ $DALIDATDIR_2\/| $DALI_SERVER_HOME\/Bin\/fssp | " .
+         "perl $DALI_SERVER_HOME\/Bin\/fsspselect.pl ARG3 $cut2 $nbest | " .
+         "perl $DALI_SERVER_HOME\/Bin\/html.pl $DALIDATDIR_1 $DALIDATDIR_2 dummy 1 > x.x 2> ARG4"; # cd1 dccpfile list0 textfile
+
+     $dofssp="perl $DALI_SERVER_HOME\/Bin\/sortdccp_z.pl < ARG2 | perl $DALI_SERVER_HOME\/Bin\/fsspfilter.pl ARG1 $cut2 $nbest $nbestpercd2| " .
+         "perl $DALI_SERVER_HOME\/Bin\/pipeforwarder.pl ARG1 99999 $DALIDATDIR_1\/ $DALIDATDIR_2\/| $DALI_SERVER_HOME\/Bin\/fssp | " .
+         "perl $DALI_SERVER_HOME\/Bin\/fsspselect.pl ARG3 $cut2 $nbest | " .
+         "perl $DALI_SERVER_HOME\/Bin\/html.pl $DALIDATDIR_1 $DALIDATDIR_2 ARG4 > ARG5 2> ARG6"; # cd1 dccpfile list0 jobid htmlfile textfile 
+
+     $dofssp2="perl $DALI_SERVER_HOME\/Bin\/sortdccp_z.pl < ARG2 | perl $DALI_SERVER_HOME\/Bin\/fsspfilter.pl ARG1 $cut2 $nbest $nbestpercd2 | ".
+     	"perl $DALI_SERVER_HOME\/Bin\/pipeforwarder.pl ARG1 99999 $DALIDATDIR_1\/ $DALIDATDIR_2\/ | $DALI_SERVER_HOME\/Bin\/fssp | " .
+         "perl $DALI_SERVER_HOME\/Bin\/fsspselect.pl ARG3 $cut2 $nbest > ARG4 "; 
+	 # cd1 dccpfile list0 parsable-results-file
+
+     $dalidefault="perl $DALI_SERVER_HOME\/Bin\/forwarder.pl \"#ltop\" TRUE \"#nclone\" \"1 1 0\"  " .
+         "\"#dalidatpath\" $DALIDATDIR_1 \"#refitol\" 2000.0 > dali.default";
+
+     $selfdccp="perl $DALI_SERVER_HOME\/Bin\/forwarder.pl $DALIDATDIR_1 | $DALI_SERVER_HOME\/Bin\/selfdccp" .
+           " | perl $DALI_SERVER_HOME\/Bin\/pipeforwarder.pl $DALIDATDIR_1 $DALIDATDIR_2 DCCP 2.0 1 | " .
+           " $DALI_SERVER_HOME\/Bin\/dp >> ARG1 "; # dccpfile; reads from list2
+
+     $self_dccp="echo \"ARG1\" > list2 \; perl $DALI_SERVER_HOME\/Bin\/forwarder.pl $DALIDATDIR_1 | $DALI_SERVER_HOME\/Bin\/selfdccp > ARG2 "; # cd1, dccpfile
+
+     $generate_ranklist="echo ARG2 > list1 ; $DALI_SERVER_HOME\/Bin/forwarder.pl $DALIDATDIR_1 12.0 | $DALI_SERVER_HOME\/Bin/wolf_grid ; " . # creates fort.1
+	"perl $DALI_SERVER_HOME\/Bin\/forwarder.pl $WOLFDB | $DALI_SERVER_HOME\/Bin\/wolf90 | perl $DALI_SERVER_HOME\/Bin\/tabz.pl 6 13329 | sort -nr -k 8 > ranklist_wolf ; " .
+	"$python $DALI_SERVER_HOME\/Bin/Blast_GTG.py ARG3 query $RSDB40_v2 | $python $DALI_SERVER_HOME\/Bin/gtg_attributes.py 1 $DBDIR | perl $DALI_SERVER_HOME\/Bin/gtg_compare.pl $DBDIR\/pdb90.attributes_1 | sort -nr -k 4 > ranklist_gtg ; " .
+	"rm -f ARG4 ; perl $DALI_SERVER_HOME\/Bin\/combinez.pl | sort -nr -k 2 | perl $DALI_SERVER_HOME\/Bin/filtersubset.pl $PDB90_list | cut -f 1 | head -100 > ARG4";
+	# datfile incl. path, cd1, sequence, 'list2'
+
+	$generate_ranklist_nogtg="echo ARG2 > list1 ; $DALI_SERVER_HOME\/Bin/forwarder.pl $DALIDATDIR_1 12.0 | $DALI_SERVER_HOME\/Bin/wolf_grid ; " . # creates fort.1
+        "perl $DALI_SERVER_HOME\/Bin\/forwarder.pl $WOLFDB | $DALI_SERVER_HOME\/Bin\/wolf90 | perl $DALI_SERVER_HOME\/Bin\/tabz.pl 6 13329 | sort -nr -k 8 > ranklist_wolf ; ".	
+	"echo '' > ranklist_gtg ; " .
+        "rm -f ARG4 ; perl $DALI_SERVER_HOME\/Bin\/combinez.pl | sort -nr -k 2 | perl $DALI_SERVER_HOME\/Bin/filtersubset.pl $PDB90_list | cut -f 1 | head -100 > ARG4";
+        # datfile incl. path, cd1, sequence, 'list2'
+
+	$generate_ranklist_nowolf="$python $DALI_SERVER_HOME\/Bin/Blast_GTG.py ARG3 query $RSDB40_v2 | $python $DALI_SERVER_HOME\/Bin/gtg_attributes.py 1 $DBDIR | perl $DALI_SERVER_HOME\/Bin/gtg_compare.pl $DBDIR\/pdb90.attributes_1 | sort -nr -k 4 > ranklist_gtg ; " .
+        "rm -f ARG4 ; perl $DALI_SERVER_HOME\/Bin\/combinez.pl | sort -nr -k 2 | perl $DALI_SERVER_HOME\/Bin/filtersubset.pl $PDB90_list | cut -f 1 | head -100 > ARG4";
+        # datfile incl. path, cd1, sequence, 'list2'
+
+     $walk="perl $DALI_SERVER_HOME\/Bin/walk.pl ARG1 ARG2 ARG3 ARG4 ARG5 $DALI_SERVER_HOME $MYSQL_DATABASE "; # cd1, dccpfile, zcutoff, DALIDATDIR_1, DALIDATDIR_2
+
+}
+
+#______________________________________________________________________________
+# Title     : check_arguments_and_select_action_DaliLite
+# Usage     :
+# Function  : check_arguments_and_select_action
+# Example   :
+# Keywords  : do_something
+# Options   :
+# Author    : holm@ebi.ac.uk, jong@ebi.ac.uk
+# Category  :
+# Returns   :
+# Version   : 1.3
+#------------------------------------------------------------------------------
+sub check_arguments_and_select_action_DaliLite {
+    	my($prompt_arg1, $dali_lock_file);
+
+	# onle one process per CWD
+    	$dali_lock_file='dali.lock';
+    	if(-s $dali_lock_file > 10){ die "\n This dir. is locked by another DALI process, dying\n\n"; }
+
+	# only one action per call to DaliLite
+	$prompt_arg1 = shift;
+	if($prompt_arg1=~/^-h/) {
+		&help;
+	} elsif($prompt_arg1=~/^-r/) {
+		($pdbfile)=shift;
+		($x)=&get_type($pdbfile,'list');
+		if($x ne 'brkfile') { die "$pdbfile is $x not a PDB file\n"; }
+		($short)=shift;
+		if($short!~/^\w{4}$/) { die "invalid identifier $short - must be 4 characters [e.g., 1ppt]\n"; }
+        	&prepare_brkfile($pdbfile,$short);
+	} elsif($prompt_arg1=~/^-l/) {
+		$run_reverse=0; # unidirectional, asymmetric comparison
+		($cd1)=shift;
+		$cd1=~s/\W//g;
+		($x)=&get_type($cd1,'list');
+		if($x ne 'code') { die "(E) invalid code \"$cd1\" is \"$x\"\n\n\t option -l used\n\n"; }
+		&check_datafile($cd1);
+        	($nres,$nsse,$dccpfile)=&get_stuff($cd1);
+		($list0)=shift;
+		open(LIST2,">list2");
+		open(IN,"<$list0");
+		while(<IN>) {
+			my($cd2)=/^(\w+)/;
+			print LIST2 "$cd2\n";
+		}
+		close(IN);
+		close(LIST2);
+		# run branch-and-bound Parsi, or Soap if insufficient secondary structure elements
+        	open(LIST1, ">list1") || die "\n Error in making list1\n";
+        	print LIST1 "$cd1\n";
+        	close(LIST1);
+
+		&wolf_1($dccpfile,$nsse); # wolf/soap
+		&align_1($cd1,$dccpfile,$nsse); # parsi
+		# DCCP output in PWD
+	} elsif($prompt_arg1=~/^-A[llAll]*/) { ## All against All with a given list of PDB names
+		$run_reverse=0; # unidirectional, asymmetric comparison
+        	($all_all_comp_list)=shift;
+        	($list0)=$all_all_comp_list;
+
+	        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	        # Reading the given list
+	        #____________________________________________________
+	        open(SELF1, "<$all_all_comp_list") || die "\n Cannot open $all_all_comp_list \n\n\n";
+	        while(<SELF1>){
+	            if(@names=/(\S+)/g){  ## just in case the list has more than one column
+	               push(@pdb_str_names, @names);
+	            }
+	        }
+	        close(SELF1);
+
+	        for($i=0; $i< @pdb_str_names; $i++){
+	            $cd1=$pdb_str_names[$i];
+	            ($x)=&get_type($cd1,'list');
+
+	            if($x ne 'code') { die "(E) invalid code \"$cd1\" is \"$x\"\n\n\t option -A used\n\n"; }
+	            &check_datafile($cd1);
+	            ($nres,$nsse,$dccpfile)=&get_stuff($cd1);
+	            system "cp $list0 list2"; # comparison against list file
+	            # run branch-and-bound Parsi, or Soap if insufficient secondary structure elements
+	            open(LIST1, ">list1") || die "\n Error in making list1\n";
+		    $cd1=~s/\W//g;
+	            print LIST1 "$cd1\n";
+	            close(LIST1);
+		    &wolf_1($dccpfile,$nsse);
+	            &align_1($cd1,$dccpfile,$nsse); # parsi
+	        }
+		# DCCP output in PWD
+
+	} elsif($prompt_arg1=~/^-a/) { # parsi or soap, no wolf
+		($cd1)=shift;
+		($x)=&get_type($cd1,'list');
+		if($x ne 'code') { die "invalid code $cd1 is $x\n"; }
+		&check_datafile($cd1);
+		($cd2)=shift;
+		($x)=&get_type($cd2,'list');
+		if($x ne 'code') { die "invalid code $cd2 is $x\n"; }
+		&check_datafile($cd2);
+	        print "type equals $x\n";
+	        ($nres,$nsse,$dccpfile)=&get_stuff($cd1);
+		# run branch-and-bound Parsi, or Soap if insufficient secondary structure elements
+	        open(LIST1, ">list1") || die "\n Error in making list1\n";
+	        open(LIST2, ">list2") || die "\n Error in making list2\n";
+		$cd1=~s/\W//g; $cd2=~s/\W//g;
+	  	print LIST1 "$cd1\n";
+	        print LIST2 "$cd2\n";
+	        close(LIST1);
+	        close(LIST2);
+
+	        print "List 1 and 2 have been created\n";
+		if($nsse>$MINSSE) { 
+			&wolf_1($dccpfile, $nsse); # wolf
+			&align_1($cd1,$dccpfile,$nsse); 
+		} # parsi
+		else { &wolf_1($dccpfile,$nsse); } # soap
+		# DCCP output in PWD
+	} elsif($prompt_arg1=~/^-f/) {
+        	($cd1)=shift;
+		($dccpfile)=shift;
+		($list0)=shift;
+		if(-s $list0 < 1) { die "You must provide a listfile of Representatives\n"; }
+		($fsspfile)=shift;
+		if($fsspfile!~/\w/) { die "Please provide a name for the FSSP output file\n"; }
+        	open(LIST2, ">list2") || die "\n Error in making list2 \n";
+        	print LIST2 "$cd1\n";
+        	close(LIST2);
+        	&system_cmd($selfdccp, 1, $dccpfile);
+		&system_cmd($dofssp,1,$cd1,$dccpfile,$list0,'dummy',$fsspfile,'/dev/null');
+	} elsif($prompt_arg1=~/^-p/) {
+		# only one process per CWD
+
+		$run_reverse=$TRUE; # symmetric pairwise comparison
+		# uses fixed names 'mol1' and 'mol2' for the query and sbjct structure, respectively
+		# set all data local to Current Work Directory
+		$DALIDATDIR_1    ='./';
+		$DALIDATDIR_2	='./';
+		$DCCPDIR       ='./';
+		$nbest = 1000;
+		$nbestpercd2 = 1000; # pass through suboptimal alignments 
+		# rerun the default-definitions with new parameters...
+		&dali_suite;
+		$parsi=$parsi_suboptimal; # 'overwrite method'
+                &system_cmd($dalidefault,1);
+		# clean CWD
+		system "rm -f mol*.dssp mol*.dccp mol*.dat mol*.con CA-*.pdb matrix.txt ranges.txt index.html aln.html mol*.result replist";
+		# check arguments
+		my($pdbfile1)=shift;
+		my($pdbfile2)=shift;
+		my($jobid)=shift;
+		foreach $p ($pdbfile1,$pdbfile2) {
+			($x)=&get_type($p,'argument');
+			if($x ne 'brkfile') { die "$p is $x not a PDB file\n"; }
+		}
+		(@chains1)=&prepare_brkfile($pdbfile1,'mol1');
+		(@chains2)=&prepare_brkfile($pdbfile2,'mol2');
+		print "Analyse (@chains1) vs. (@chains2)\n";
+		# compare against all chains in other: create 'list0' file
+		open(OUT,">replist");
+		foreach $x (@chains2) {
+			&check_datafile($x);
+			print OUT $x,"\n"; 
+		}
+		close(OUT);
+		# perform comparisons of each chain in first structure
+		foreach $cd1 (@chains1) {
+		    &check_datafile($cd1);
+	            ($nres,$nsse,$dccpfile)=&get_stuff($cd1);
+	            # run branch-and-bound Parsi, or Soap if insufficient secondary structure elements
+		    system "cp replist list2";
+	            open(LIST1, ">list1") || die "\n Error in making list1\n";
+		    $cd1=~s/\W//g;
+	            print LIST1 "$cd1\n";
+	            close(LIST1);
+		    &wolf_1($dccpfile,$nsse); # wolf/soap
+	            &align_1($cd1,$dccpfile,$nsse); # parsi
+		}
+		# remove duplicates & overlapping suboptimal alignments
+		# declump reorders alignments by decreasing Z-score!
+		foreach $cd1 (@chains1) {
+			$dccpfile="$cd1\.dccp";
+			&declump($dccpfile,'x.x','./','./');
+		}
+
+		# output: index.html is top page
+		foreach $cd1 (@chains1) {
+			$dccpfile="$cd1\.dccp";
+			#&system_cmd($dofssp2,1,$cd1,$dccpfile,'replist',"$cd1\.result",$i);
+			&system_cmd($dofssp,1,$cd1,$dccpfile,'replist',$jobid,"$cd1\.html","$cd1\.txt");
+		}
+		#&generate_html_pages('./',$pdbfile1,$pdbfile2,\@chains1,\@chains2,$jobid);
+		&generate_index_html(0,@chains1);
+	} elsif($prompt_arg1=~/^-u/) { 
+		# PDB update: blast(100) - check - wolf - check - parsi -check
+		# quit if strong match found to complete-dccp structure
+		# pdb.list and pdb90.list updated beforehand
+		# newcd1.list excluded initially, release chain when processed
+
+                &system_cmd($dalidefault,1);
+                # clean CWD
+                system "rm -f ranklist_* mol*.dssp mol*.dccp mol*.dat mol*.con CA-*.pdb matrix.txt ranges.txt index.html aln.html mol*.result replist";
+                # check arguments: do-list, new-list
+		# new-list is excluded, do-list may be chunk of new-list so lots of do-lists can be run in parallel
+                ($newcd1file)=shift;
+                open(IN,"<$newcd1file") || die "Can't open $newcd1file\n";
+		undef(%exclude); # global - used in check_strong_match_u
+		while(<IN>) {
+			my ($cd1)=/^(\w+)/;
+			push(@chains1,$cd1);
+			$exclude{$cd1}=1;
+		}
+		close(IN);
+		my($newcd1file)=shift;
+		open(IN,,"<$newcd1file") || die "Can't open $newcd1file\n";
+		while(<IN>) {
+			my($cd1)=/^(\w+)/;
+			$exclude{$cd1}=1;
+		}
+		close(IN);
+                print "Compare (@chains1) vs. PDB90 DALIDATDIR_1=$DALIDATDIR_1 DALIDATDIR_2=$DALIDATDIR_2\n";
+
+                foreach $cd1 (@chains1) {
+
+                        # perform comparisons of each chain in first structure against PDB90
+                        &check_datafile($cd1);
+                        ($nres,$nsse,$dccpfile)=&get_stuff($cd1);
+
+                        $dccpfile="$cd1\.dccp";
+                        $fsspfile="$cd1\.html";
+			$fssp90file="cd1\-90.html";
+                        # (1) top-10 PDB-Blast hits
+                        my $long=$cd1;
+                        if(length($cd1)<5) { $long.='_'; }
+                        my $datafile="$DALIDATDIR_1\/$long\.dat";
+                        my($line)=`grep sequence $datafile`;
+                        $line=~s/\-sequence \"/\>$cd1\n/;
+                        open(OUT,">$TMPFILE"); print OUT "$line\n"; close(OUT);
+                        &system_cmd($BLAST90_EXE,1,$TMPFILE,'ranklist_blast');
+			# run wolf/parsi on best non-excluded blast hit
+                        open(LIST1, ">list1") || die "\n Error in making list1\n";
+                        $cd1=~s/\W//g;
+                        print LIST1 "$cd1\n";
+                        close(LIST1);
+			&system_cmd("cut -f 2 ranklist_blast | head -10 > list2");
+			&wolf_1($dccpfile,$nsse); # wolf/soap
+                        &align_1($cd1,$dccpfile,$nsse); # parsi
+                        # terminate if strong match found
+                        my($status,$z10)=&check_strong_match_u($cd1,$nres,$dccpfile,$fsspfile);
+                        if($status>0) {
+                                print "# Blast search found strong match\n";
+				$exclude{$cd1}=0;
+				next;
+			}
+
+			# (2) wolf search against PDB90
+			&system_cmd("cp $PDB90_list list2");
+ 			&wolf_1($dccpfile,$nsse); # wolf/soap
+                        
+                        # terminate if strong match found
+                        my($status,$z10)=&check_strong_match_u($cd1,$nres,$dccpfile,$fsspfile);
+                        if($status>0) {
+                                print "# wolf PDB90 search found strong match\n";
+				$exclude{$cd1}=0;
+				next;
+			}
+
+			# (3) parsi search against PDB90
+			print "# parsi search against PDB90\n";
+			&align_1($cd1,$dccpfile,$nsse);
+			$exclude{$cd1}=0;
+                }
+        } elsif($prompt_arg1=~/^-w/) {
+		# generate transitive alignments
+		my($listfile)=shift;
+		my($x)=&get_type($listfile,'argument');
+		if($x ne 'list') { die "$listfile is $x not a list file \n"; }
+
+		# process each chain in listfile
+		open(IN,"<$listfile");
+		while(<IN>) {
+			my($cd1)=/^(\w+)/;
+			# generate self-dccp
+			my $dccpfile=$cd1.'.dccp';
+			&system_cmd($self_dccp,1,$cd1,$dccpfile);
+			# walk.pl generates transitive alignments
+			&system_cmd($walk,1,$cd1,$dccpfile,2.0,$DALIDATDIR_1,$DALIDATDIR_2); 
+		}
+	} elsif($prompt_arg1=~/^-d/) {
+		# dalidb dump
+		my($query)=shift;
+		my($jobid)=shift;
+                &dali_suite;
+		# generate dccp files
+		&system_cmd($dump_sql_dccp,1,$query,'replist');
+		my($x)=&get_type('replist','argument');
+                if($x ne 'list') { # error
+			open(OUT,">index.html"); 
+			print OUT "ERROR: no chains match query $query\n"; 
+			close(OUT);
+			exit(0);
+		}
+		# capture chainlist
+		my(@chains1);
+		open(IN,"<replist");
+		while(<IN>) { 
+			my($cd1)=/^(\w+)/; 
+			push(@chains1,$cd1); 
+		}
+		close(IN);
+		# generate chain-wise fssp outputs
+		my $cd1;
+		foreach $cd1 (@chains1) {
+			my $dccpfile="$cd1\.dccp";
+			my $fsspfile="$cd1\.html";
+			my $textfile="$cd1\.txt";
+			&system_cmd($dofssp,1,$cd1,$dccpfile,$PDB100_list,$jobid,$fsspfile,$textfile);
+			my $fssp90file="$cd1\-90.html";
+                        &system_cmd($dofssp,1,$cd1,$dccpfile,$PDB90_list,$jobid,$fssp90file,"/dev/null");
+		}
+		# collect html pages: index.html, pdb90.html
+		&generate_index_html(1,@chains1);	
+	} elsif($prompt_arg1=~/^-[Qq]/) {
+		# DALIDATDIR1 for local query
+		# DALIDATDIR2 read-only database
+                # uses fixed name 'mol1' for the query structure
+                # set all data local to Current Work Directory
+		$DALIDATDIR_1    ="./";
+                $DCCPDIR       ="./";
+                # rerun the default-definitions with new parameters...
+                &dali_suite;
+                &system_cmd($dalidefault,1);
+                # clean CWD
+                system "rm -f ranklist_* mol*.dssp mol*.dccp mol*.dat mol*.con CA-*.pdb matrix.txt ranges.txt index.html aln.html mol*.result replist";
+                # check arguments
+                my ($pdbfile1)=shift;
+		my ($jobid)=shift;
+                ($x)=&get_type($pdbfile1,'argument');
+                if($x ne 'brkfile') { die "$pdbfile1 is $x not a PDB file\n"; }
+                (@chains1)=&prepare_brkfile($pdbfile1,'mol1');
+                print "Compare (@chains1) vs. PDB90 DALIDATDIR_1=$DALIDATDIR_1 DALIDATDIR_2=$DALIDATDIR_2\n";
+
+		# -q: use GTG
+		# -Q: no GTG
+		if($prompt_arg1=~/^-Q/) { $use_gtg=0; } else { $use_gtg=1; }
+
+		# case: no long enough chains - return message in index.html
+		if($#chains1<0) {
+			print "# empty chain list\n";
+			open(OUT,">index.html");
+			print OUT "<HTML>Error: no chains to compare. Backbone atoms (N, CA, C, O) required. Minimum length = $MINLEN residues.\n</HTML>\n";
+			close(OUT);
+			return;
+		}
+
+		my @done_chains; # compare cd1 against already searched chains within query PDB file
+
+		foreach $cd1 (@chains1) {
+
+                        # perform comparisons of each chain in first structure against PDB90
+                        &check_datafile($cd1);
+                        ($nres,$nsse,$dccpfile)=&get_stuff($cd1);
+
+			if($#done_chains>=0) {
+				# compare internally against done_chains: skip if strong match
+				# DALIDATDIR_1,2=./
+				$DALIDATDIR=$DALIDATDIR_2;
+				$DALIDATDIR_2=$DALIDATDIR_1;
+				&dali_suite;
+				open(LIST1,">list1"); print LIST1 "$cd1\n"; close(LIST1);
+				open(LIST2,">list2");
+				foreach $cd2 (@done_chains) { print LIST2 "$cd2\n"; }
+				close(LIST2);
+				&wolf_1($dccpfile,$nsse); # wolf/soap
+	                        &align_1($cd1,$dccpfile,$nsse); # parsi
+	                        # terminate if strong internal match found
+	                        $dccpfile="$cd1\.dccp";
+	                        $fsspfile="$cd1\.html";
+	                        &system_cmd($dofssp_plain,1,$cd1,$dccpfile,$PDB90_list,$fsspfile);
+	                        my($status,$z10)=&check_strong_match($cd1,$nres,$dccpfile,$fsspfile);
+	                        if($status>0) {
+	                                print "# Seed search found strong internal match match for chain $cd1\n";
+					next;
+				}
+				# restore DALIDATDIR_2 for database comparison
+				$DALIDATDIR_2=$DALIDATDIR;
+				&dali_suite;
+			}
+
+			# fast feature filter comparisons: create list file with one target
+			# (1) best PDB90-Blast hit
+			my $long=$cd1;
+			if(length($cd1)<5) { $long.='_'; } 
+			my $datafile="$DALIDATDIR_1\/$long\.dat";
+			my($line)=`grep sequence $datafile`;
+			$line=~s/\-sequence \"/\>$cd1\n/;
+			open(OUT,">$TMPFILE"); print OUT "$line\n"; close(OUT);
+			&system_cmd($BLAST90_EXE,1,$TMPFILE,'ranklist_blast');
+	
+			$_=`grep sequence $DALIDATDIR_1\/$long\.dat`;
+			s/^\S+\s+\"//;
+			s/[a-z]/C/g;
+			chomp;
+			my $sequence=$_;
+			warn "grepped sequence: $sequence\n";	
+			if($use_gtg) {
+				if($nsse>$MINSSE) { &system_cmd($generate_ranklist,1, "$DALIDATDIR_1\/$long\.dat", $cd1, $sequence, 'list2');
+				} else { &system_cmd($generate_ranklist_nowolf,1, "$DALIDATDIR_1\/$long\.dat", $cd1, $sequence, 'list2'); }
+			} else {
+				if($nsse>$MINSSE) { &system_cmd($generate_ranklist_nogtg,1, "$DALIDATDIR_1\/$long\.dat", $cd1, $sequence, 'list2');
+				} # no wolf, no gtg, only blast
+			} 
+			# add already done query chains to list2, in addition to top-1 from DB
+			foreach $cd2 (@done_chains) { &system_cmd("echo $cd2 >> list2",1); }
+			# best blast hit
+                        &system_cmd("head -1 ranklist_blast | cut -f 2 >> list2",1);
+			push(@done_chains,$cd1);
+
+			open(LIST1, ">list1") || die "\n Error in making list1\n";
+                        $cd1=~s/\W//g;
+                        print LIST1 "$cd1\n";
+                        close(LIST1);
+			&wolf_1($dccpfile,$nsse); # wolf/soap
+			&align_1($cd1,$dccpfile,$nsse); # parsi 
+                        # terminate if strong match found
+                        $dccpfile="$cd1\.dccp";
+			$fsspfile="$cd1\.html";
+			$textfile="$cd1\.txt";
+			$fssp90file="$cd1\-90.html";
+                        &system_cmd($dofssp_plain,1,$cd1,$dccpfile,$PDB90_list,$fsspfile);
+			my($status,$z10)=&check_strong_match($cd1,$nres,$dccpfile,$fsspfile);
+			if($status>0) { 
+				print "# Seed search found strong match\n";
+			} else {
+				print "# Continue seed search to full PDB90\n"; 
+
+				# search against full PDB90 list
+	                    	# run branch-and-bound Parsi, or Soap if insufficient secondary structure elements
+	                    	system "cp $PDB90_list list2"; 
+	                    	open(LIST1, ">list1") || die "\n Error in making list1\n";
+	                    	$cd1=~s/\W//g;
+	                    	print LIST1 "$cd1\n";
+	                    	close(LIST1);
+	
+				&wolf_1($dccpfile,$nsse); # wolf/soap
+	                 	# check if wolf found strong matches 
+				($status,$z10)=&check_strong_match($cd1,$nres,$dccpfile,$fsspfile);
+				if($status>0) { 
+					print "# wolf search found strong match, skipping parsi search of PDB90\n";
+				} else {
+					print "# continue to parsi search of PDB90\n";
+					&align_1($cd1,$dccpfile,$nsse); 
+				}
+			}
+
+			# walk: transitive alignments to PDB100
+			my $zcutoff=$nres/20; if($zcutoff > 8) { $zcutoff=8; }
+			#if($zcutoff>$z10) { $zcutoff=$z10; } # rule: few matches, walk more; many matches, higher cutoff
+			&system_cmd($walk,1,$cd1,$dccpfile,2.0,$DALIDATDIR_1,$DALIDATDIR_2);
+
+			# create html output file for this chain
+			&system_cmd($dofssp,1,$cd1,$dccpfile,$PDB100_list,$jobid,$fsspfile,$textfile);
+			&system_cmd($dofssp,1,$cd1,$dccpfile,$PDB90_list,$jobid,$fssp90file,"/dev/null");
+                }
+		&generate_index_html(1,@chains1);
+	}
+	return;
+}
+
+sub generate_index_html {
+	my($link2pdb90,@chains1)=@_;
+
+        # output: index.html is top page
+	#	  pdb90.html is matches to pdb90 subset
+	# put links to start of results for each chain
+	# index.html header
+	&system_cmd("rm -f index.html");
+	open(OUT,">index.html");
+	print OUT "<HTML><H1>Results</H1>\n";
+	print OUT "<A HREF='summary.txt'>Parseable data</A>\n<BR>";
+	if($link2pdb90) { print OUT "Matches to <A HREF='pdb90.html'>PDB90</A>\n"; }
+	print OUT "<UL>\n";
+        foreach $cd1 (@chains1) {
+		warn "# tag cd1=\|$cd1\|\/n";
+		$cd1=~s/\s+//;
+		print OUT "<LI><a href=\"\#$cd1\">$cd1\</a>\n";
+	}
+	print OUT "</UL><HR>\n";
+	close(OUT);
+	foreach $cd1 (@chains1) {
+               	&system_cmd("cat $cd1\.html >> index.html",1);        
+        }
+	# printable summary
+	&system_cmd("rm -f summary.txt");
+	open(OUT,">summary.txt");
+	foreach $cd1 (@chains1) {
+		&system_cmd("cat $cd1\.txt >> summary.txt",1);
+	}
+	close(OUT);
+	# pdb90.html header
+        open(OUT,">pdb90.html");
+        print OUT "<HTML><H1>Results</H1>\n";
+        print OUT "Matches to <A HREF='index.html'>full PDB</A>\n";
+        print OUT "<UL>\n";
+        foreach $cd1 (@chains1) {
+               $cd1=~s/\s+//;
+               print OUT "<LI><a href=\"\#$cd1\">$cd1\</a>\n";
+        }
+        print OUT "</UL>\n";
+        close(OUT);
+        foreach $cd1 (@chains1) {
+               &system_cmd("cat $cd1\-90.html >> pdb90.html",1);
+        }
+	return;
+}
+
+sub check_strong_match { # used by -quick
+			my($cd1,$nres,$dccpfile,$fsspfile)=@_;
+                        &system_cmd($dofssp_plain,1,$cd1,$dccpfile,$PDB90_list,$fsspfile);
+
+                        open(IN,"<$fsspfile");
+                        my $status=0;
+                        my $zcutoff=$nres/10-4;
+                        if($zcutoff>12) { $zcutoff=12; }
+			if($zcutoff<4) { $zcutoff=4; }
+                        my $pidecutoff=20;
+                        my $z10=2;
+                        while(<IN>) {
+                                next unless(/^\s+\d+:\s+\S+\s*([\d\.]+)\s+\S+\s+\d+\s+\d+\s+(\d+)/);
+                                $z=$1;
+                                $pide=$2;
+                                print "# got z=$z pide=$pide from $_\n";
+                                if($z>=$zcutoff) { $status+=1; }
+                                if($pide>=$pidecutoff) { $status+=2; }
+                                last; # first match only
+                        }
+			my $i=0;
+                        while(<IN>) { # z(10) used to down-adjust zcutoff in walk - no, it's not in use!
+                                last unless(/^\s+(\d+):\s+\S+\s*([\d\.]+)\s+\S+\s+\d+\s+\d+\s+(\d+)/);
+                                if($i < 10 ) { $z10=$2; }
+				$i++;
+				if($i == 10) { last; }
+                        }
+                        close(IN);
+                        print "# cd1=$cd1 nres=$nres zcutoff=$zcutoff status=$status z=$z z10=$z10 pide=$pide\n";
+			return($status,$z10);	
+}
+
+sub check_strong_match_u { # used by -update
+                        my($cd1,$nres,$dccpfile,$fsspfile)=@_;
+                        &system_cmd($dofssp_plain,1,$cd1,$dccpfile,$PDB100_list,$fsspfile);
+
+                        open(IN,"<$fsspfile");
+                        my $status=0;
+                        my $zcutoff=$nres/10-4;
+                        if($zcutoff>12) { $zcutoff=12; }
+                        if($zcutoff<4) { $zcutoff=4; }
+                        my $pidecutoff=20;
+                        my $z10=2;
+                        while(<IN>) {
+                                next unless(/^\s+\d+:\s+([\w\-]+)\s*([\d\.]+)\s+\S+\s+\d+\s+\d+\s+(\d+)/);
+				$cd2=$1; $z=$2; $pide=$3;
+				$cd2=~s/\-//;
+				next if($exclude{$cd2}>0); # exclude new chains not yet inserted in dccp
+                                print "# got cd1=$cd1 zcutoff=$zcutoff cd2=$cd2 z=$z pide=$pide from $_\n";
+                                if($z>=$zcutoff) { $status+=1; }
+                                if($pide>=$pidecutoff) { $status+=2; }
+                                last; # first match only
+                        }
+			my $i=0;
+                        while(<IN>) { # z(10) used to down-adjust zcutoff in walk
+                                last unless(/^\s+\d+:\s+([\w\-]+)\s*([\d\.]+)\s+\S+\s+\d+\s+\d+\s+\d+/);
+				my $cd2=$1; $cd2=~s/\-//;
+				next if($exclude{$cd2}>0);
+				if($i<10) { $z10=$2; }
+				$i++;
+                                if($i == 10 ) {
+                                        last;
+                                }
+                        }
+                        close(IN);
+			my $maxgap=&dccp_maxgap($cd1,$nres,$dccpfile);
+			if($maxgap>$MAX_GAP) { $status=0; }
+                        print "# cd1=$cd1 nres=$nres maxgap=$maxgap zcutoff=$zcutoff status=$status z=$z z10=$z10 pide=$pide\n";
+                        return($status,$z10);
+}
+
+sub dccp_maxgap {
+	# domain cover of query: longest gap in stacked alignment
+        my($cd1,$nres1,$dccpfile)=@_;
+        open(IN,"<$dccpfile");
+        my $block='';
+        my $cd2;       
+	my $order; 
+	my $nfrag=0;
+	my $ifrag=0;
+	my $jfrag=0;
+	my %cover;
+	while(<IN>) {
+                if (/DCCP/) {
+                        my(@x)=split(/\s+/);
+                        my $cdb=pop(@x);
+                        my $cda=pop(@x);
+                        $cd2=$cdb;
+                        $order=1;
+                        if($cdb eq $cd1) { $cd2=$cda; $order=2; }
+			if($cda eq $cdb) { $order=0; } # identity, skipped
+                        $nfrag=pop(@x);
+			$ifrag=0;
+			$jfrag=0;
+                } elsif(/alignment/) {
+                        next;
+                } else {
+        		s/^\s+//; # remove leading blanks
+			my(@x0)=split(/\s+/);
+			# case: nres>1000
+			my(@x);
+			foreach(@x0) {
+				my $l=length($_);
+				if($l>4) {
+					my $x=substr($_,$[,$l-4);
+					my $y=substr($_,$l-4,4);
+					push(@x,$x,$y);
+				} else {
+					push(@x,$_);
+				}
+			}
+			if($order==1 || $jfrag==$nfrag) {
+				while ($ifrag<$nfrag && $#x>0) {
+					$ifrag+=1;
+					my($from)=shift(@x);
+					my($to)=shift(@x);
+					foreach ($from..$to) { $cover{$_}+=1; }		
+				}	
+			} elsif($order==2 && $jfrag<$nfrag) {
+				while ($jfrag<$nfrag && $#x>0) {
+					$jfrag+=1;
+					shift(@x); shift(@x);
+				}
+			}
+	        }
+        }
+        close(IN);
+	# find longest gap in cover
+	my(@list)=(sort { $a <=> $b } keys %cover);
+	my $maxgap=0;
+	my $prev=0;
+	my $i;
+	foreach $i (@list) { 
+		#print "#dccp_maxgap: i=$i maxgap=$maxgap\n";
+		my $g=$i-$prev;
+		if($g>$maxgap) { $maxgap=$g; }
+		$prev=$i;
+	}
+	my $g=$nres1-$prev;
+	if($g>$maxgap) { $maxgap=$g; }
+	return($maxgap);
+}
+
+sub generate_html_pages { # utility for DaliLite -pairwise
+	($OUTDIR,$pdbfile1,$pdbfile2,$chains1,$chains2,$jobid)=@_;
+	# creates 'index.html': results summary table; pairwise alignments; ranges; inputs
+	# grep COMPND records from input files
+	my(@compnd1)=`egrep '^COMPND|^HEADER|^SOURCE|^AUTHOR|^TITLE' $pdbfile1`;
+	my(@compnd2)=`egrep '^COMPND|^HEADER|^SOURCE|^AUTHOR|^TITLE' $pdbfile2`;
+	# grep nres from first line in dat-file
+	undef(%info);
+	@list1=@$chains1;
+	@list2=@$chains2;
+	foreach $x (@list1,@list2) { 
+		$y=$x;
+		($nres,$nsse,$z)=&get_stuff($x); 
+		next if($nres<1);
+		$info{$y}="$y\: $nres residues and $nsse secondary structure elements\n";
+	}
+	my $i=0;
+	my $range_block='';
+	my $alignment_block='';
+	my $summary_block='';
+	foreach $cd1 (@$chains1) {
+		next if(!defined($info{$cd1}));
+		$summary_block .= "<b><A NAME=\#$cd1\><p STYLE=\"font-family:luxi sans,arial,sans-serif;font-size:20px\">First Structure & Chain: $cd1</p></b>\n";
+		$summary_block .= "<TABLE STYLE=\"font-family:luxi sans,arial,sans-serif;font-size:15px\" BORDER=\"1\">\n<TR>\n<TD>".join("</TD><TD>",'No.','Second Structure & Chain','Z-Score','Aligned Residues','RMSD [&Aring;]','Seq. Identity [%]','Superimposition','Stacked  Structural Alignment','Structural Equivalences')."</TD>\n</TR>\n";
+		# grep -summar lines
+		my $resultfile="$cd1\.result";
+		
+		$alignment_block.=`perl $DALI_SERVER_HOME\/Bin\/html.pl $DALIDATDIR_1 $DALIDATDIR_2 $jobid 1 1 < $resultfile`;
+			
+		my %first; # set <TR bgcolor=green> if best hit per cd2
+		my $chainid1=' ';
+		if(length($cd1)>4) { $chainid1=substr($cd1,4,1); }
+		warn "$cd1 chainid = $chainid1\n";
+		open(IN,"<$resultfile");
+		while(<IN>) {
+			if(/^-summar\s+\"(.*)\"/) {
+				my($x,$cd2,$z,$rmsd,$lali,$y,$pide)=split(/\s+/,$1);
+				$cd2=~s/\-//;
+				$i++;
+				my $bgcolor='';
+				if($first{$cd2}<1) { $bgcolor="bgcolor=\"$highlightcolor\""; }
+				$first{$cd2}=1;
+				$range_block.= "<br><A NAME=ranges\-$i\><A HREF=\#$cd1>back to top</A>\n# Alignment number = $i, Z-score = $z, length of alignment = $lali, sequence identity = $pide percent\n";
+				foreach(@range) {
+					my($x)=/\"(.*\S)\s*\"/;
+					$range_block.=sprintf("%4d ",$i);
+					$range_block.="$x\n";
+				}
+				undef(@u);
+				undef(@t);
+				foreach(@matrix) {
+					my($a,$b,$c,$t)=/\)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)/;
+					$t=~s/\"//;
+					push(@u,$a,$b,$c);
+					push(@t,$t);
+				}
+				undef(@matrix);
+				undef(@range);
+				my $u=join(',',@u); ###$u[0],$u[3],$u[6],$u[1],$u[4],$u[7],$u[2],$u[5],$u[8]); # transposed from Fortran
+				my $t=join(',',@t);
+				$summary_block .= "<TR $bgcolor>\n<TD>".join("</TD><TD>",$i,$cd2,$z,$lali,$rmsd,$pide,"<A HREF=../../qz-test?jobid\=$jobid\&cd1=mol1&cd2=mol2\&u\=$u\&t\=$t\>view in Jmol</A><BR><A HREF=../../qz-test?jobid\=$jobid\&pdbid=mol2&u\=$u\&t\=$t\>download PDB</A>","<A HREF=#alignment\-$i\>click here</A>","<A HREF=#ranges\-$i\>click here</A>","</TD>\n</TR>\n");
+
+			}elsif(/^-matrix/) { # precedes -summar
+				# transpose U for standard representation
+				push(@matrix,$_);
+			}elsif(/^-ranges/) { # precedes -summar
+				push(@range,$_);
+			}
+		}
+		close(IN);
+		$summary_block .= "</TABLE>\n<BR/>\n";
+	}
+	warn "$summary_block\n";
+	# case something went wrong, or structures too dissimilar
+	if($i<1) { # $i is the alignment counter
+		$summary_block .= "<LI>No significant similarities were detected. Possible reasons: empty input or dissimilar structures\n";
+	}
+	my $info1=' '; foreach $x (@$chains1) { $info1.=$info{$x}; }
+	my $info2=' '; foreach $x (@$chains2) { $info2.=$info{$x}; }
+	open(OUT,">index.html");
+	print OUT <<"EOB";
+<TITLE\>DaliLite Results</TITLE>
+<b><p STYLE="font-family:luxi sans,arial,sans-serif;font-size:30px"><A NAME='#top'>Results of Structure Comparison</p></b>
+<p ALIGN="justify" STYLE="font-family:luxi sans,arial,sans-serif;font-size:15px">
+Each chain of mol1 is compared structurally to each chain of mol2 using the DaliLite program.
+The Dali method optimises a weighted sum of similarities of intramolecular distances. Sequence
+identity and the root-mean-square deviation of C-alpha atoms after rigid-body superimposition 
+are reported for your information only, they are ignored by the structural alignment method. 
+Suboptimal alignments do not overlap the optimal alignment or each other. Suboptimal alignments
+detected by the program are reported if the Z-score is above 2; they may be of interest if there
+are internal repeats in either structure. The best match to each chain in the
+second structure is highlighted in the table below. Z-Scores below 2 are not significant. You can
+view the superimposed structures in Jmol (applet) or download the PDB file (mol2 is rotated and
+translated to <A HREF=mol1.brk>mol1</A> position).
+</p>
+$summary_block
+
+<H2>Additional data</H2>
+<UL>
+	<LI><A HREF='#alignment_block'>Pairwise structural alignments</A>
+	<LI><A HREF='#range_block'>Structurally equivalent residues</A>
+	<LI><A HREF='#inputs'>Inputs</A><LI><A HREF='#cite'>Reference</A>
+</UL>
+<br><A NAME='alignment_block'>
+<HR>
+$alignment_block
+<br><A NAME='range_block'>
+<HR>
+<h1>Structurally equivalent residues</h1>
+<PRE>
+# Format: fixed-width columns
+# Column 1: number of alignment
+# Column 2: query structure
+# Column 3: sbjct structure
+# Columns 4, 6: first and last residue of equivalent block in query, using sequential residue numbering
+# Column 8, 10: dito in sbjct
+# Inside parentheses: amino acid type, chain identifier, and
+# 	PDB's ATOM records residue numbering for query and sbjct structure
+
+$range_block
+</PRE>
+<HR>
+<br><A NAME='inputs'>
+<b><p STYLE=\"font-family:luxi sans,arial,sans-serif;font-size:20px\">Inputs</p></b>
+<p><A HREF='#top'>back to top</A><p ALIGN=\"justify\" STYLE=\"font-family:luxi sans,arial,sans-serif;font-size:15px\">
+Here you can check that your PDB structures have been uploaded and parsed successfully.
+Below, the HEADER, TITLE, COMPND and AUTHOR records are echoed from the input PDB files,
+and the number of residues and secondary structure elements are listed for each chain.</p>
+<b><p STYLE=\"font-family:luxi sans,arial,sans-serif;font-size:15px\">First structure = mol1</p></b><PRE>@compnd1</PRE>
+<b><p STYLE=\"font-family:luxi sans,arial,sans-serif;font-size:13px\">Chains found in mol1:</p></b><PRE>$info1</PRE>
+<b><p STYLE=\"font-family:luxi sans,arial,sans-serif;font-size:15px\">Second structure = mol2</p></b><PRE>@compnd2</PRE>
+<b><p STYLE=\"font-family:luxi sans,arial,sans-serif;font-size:13px\">Chains found in mol2:</p></b><PRE>$info2</PRE>
+<br/><HR>
+<b><A NAME='cite'>
+<p STYLE=\"font-family:luxi sans,arial,sans-serif;font-size:20px\">Reference</p></b>
+<p STYLE=\"font-family:luxi sans,arial,sans-serif;font-size:15px\">Holm L, Park J (2000) DaliLite workbench for protein structure comparison.
+<br/>Bioinformatics 16, 566-567.</p>
+<HR>
+<p STYLE=\"font-family:luxi sans,arial,sans-serif;font-size:12px\">&copy; L Holm, Dec 2004,2008.</p>\n<br/></HTML/>
+EOB
+	close(OUT);
+}
+
+sub check_datafile {
+	($cd)=@_;
+	if(length($cd)>4) { $long=$cd; } else { $long=$cd.'_'; }
+	$datafile="$DALIDATDIR_1\/$long\.dat";
+	if(-s $datafile<10) { die "Dying: No datafile $datafile for $cd\n"; }
+}
+
+#______________________________________________________________________________
+# Title     : get_stuff
+# Usage     :
+# Function  :
+# Example   :
+# Keywords  :
+# Options   :
+# Author    : jong@bio.cc,
+# Category  :
+# Returns   :
+# Version   : 1.1
+#------------------------------------------------------------------------------
+sub get_stuff {
+	local($cd1)=@_;
+	# get nres, nsse, dccpfile, datafile
+	if(length($cd1)==4) {$a=$cd1; $b=$cd1."_";} else {$a=$cd1; $b=$cd1;}
+	$dccpfile=$a . ".dccp";
+	$datafile=$DALIDATDIR_1 . $b . ".dat";
+	open(DATA_FILE, "$datafile") || die "\n Error in opening  $datafile ($cd1) \n\n";
+	$_=<DATA_FILE>;
+	($x,$cd,$nres,$nsse,$na,$nb,$dsspstring)=split(/\s+/);
+	close(DATA_FILE);
+	return($nres,$nsse,$dccpfile);
+}
+
+#______________________________________________________________________________
+# Title     : system_cmd
+# Usage     :
+# Function  : system calls, replaces 'ARGn' arguments in dalisuite-command
+# Example   :
+# Keywords  :
+# Options   :
+# Author    : holm@ebi.ac.uk, jong@ebi.ac.uk
+# Category  :
+# Returns   :
+# Version   : 1.0
+#------------------------------------------------------------------------------
+sub system_cmd {
+	#
+	# call as system_cmd(command,control-level,arg1,arg2,...)
+	# ARGn substrings in command will be replaced by the arguments
+	#
+	# control level = 0 : don't test status
+	#		= 1 : warn
+	#		= 2 : abort
+	#
+	local ($status,$cntrl);
+
+	local ($cmd,@args) = @_;
+	$cntrl=$args[0];	 # ARGn start from one
+ 	foreach $i ( 1 .. $#args) {
+		$y="ARG" . $i;
+		$z=$args[$i];
+		$cmd=~s/$y/$z/g;
+	}
+	print "system_cmd: $cmd\n";
+	$status=system "$cmd";
+	if ($status && $cntrl==2) { die "FATAL ERROR:\n$cmd\n";}
+	if ($status && $cntrl==1) { warn "WARNING FROM: $cmd\n"; }
+}
+
+
+#______________________________________________________________________________
+# Title     : wolf_1
+# Usage     :
+# Function  : 3D lookup, fast heuristic database search
+# 	    : (run soap if few secondary structure elements)
+# Example   :
+# Keywords  :
+# Options   :
+# Author    : holm@ebi.ac.uk, jong@ebi.ac.uk
+# Category  :
+# Returns   :
+# Version   : 1.0
+#------------------------------------------------------------------------------
+sub wolf_1 {
+	#
+	# prepare list1 list2 outside
+	#
+ 	local ($dccpfile,$nsse) = @_;
+	&system_cmd("rm -f fort.91 ");
+	if($nsse>$MINSSE) { &system_cmd($wolf,1); } else { &system_cmd($soap,1); }
+	if(-e "fort.91") { &system_cmd($domainparser,1,"fort.91",$dccpfile); }
+}
+
+
+
+#______________________________________________________________________________
+# Title     : align_1
+# Usage     :
+# Function  : branch-and-bound structure comparison alias Parsi
+# Example   :
+# Keywords  : secondary structure elements
+# Options   :
+# Author    : holm@ebi.ac.uk, jong@ebi.ac.uk
+# Category  :
+# Returns   :
+# Version   : 1.1
+#------------------------------------------------------------------------------
+sub align_1 {
+	#
+	# prepare list1 list2 outside
+	#
+	local ($cd1,$dccpfile,$nsse) = @_;
+	local ($cd2,@list2);
+	if(!-e 'dali.default') { &system_cmd($dalidefault,1); } # security
+	if($nsse>SMINSSE) {
+	  #
+	  # list1 * list2
+	  #
+	  &system_cmd("echo $cd1 >list1;rm -f fort.91 fort.95 fort.96");
+	  $command=join(';',$parsi,$filter95,$pipe96);
+	  &system_cmd($command,1);
+	  if(-e "fort.91") {&system_cmd($domainparser,1,"fort.91",$dccpfile);}
+	  #
+	  # list2 * list1
+	  #
+	  return if(!$run_reverse);
+	  undef(@list2);
+	  open(IN,"<list2");while(<IN>){($cd)=/(\w+)/; push(@list2,$cd);}
+	  close(IN);
+	  $command=join(';',$parsi,$filter95,$pipe96_1);
+	  &system_cmd("mv list2 x.x; mv list1 list2; mv x.x list1");
+	  &system_cmd($command,1);
+	  if(-e "fort.91") {&system_cmd($domainparser,1,"fort.91",$dccpfile);}
+	}
+	&printstars("align_1 alignments in $dccpfile");
+}
+
+
+#______________________________________________________________________________
+# Title     : printstars
+# Usage     :
+# Function  :
+# Example   :
+# Keywords  :
+# Options   :
+# Author    : holm@ebi.ac.uk, jong@ebi.ac.uk
+# Category  :
+# Returns   :
+# Version   : 1.0
+#------------------------------------------------------------------------------
+sub printstars {
+	local($string)=@_;
+	print "* * *\n";print "* * * $string\n";print "* * *\n";
+}
+
+
+#______________________________________________________________________________
+# Title     : get_type
+# Usage     :
+# Function  :
+# Example   :
+# Keywords  :
+# Options   :
+# Author    : holm@ebi.ac.uk, jong@ebi.ac.uk
+# Category  :
+# Returns   :
+# Version   : 1.0
+#------------------------------------------------------------------------------
+sub get_type {
+	#
+	# call as kind=get_type($set1,"argument") or 	-- processing arguments
+	# 	  kind=get_type($item,"list")		-- processing list items
+	#
+	# calls itself recursively until gets a terminal kind
+	#
+	# terminals are: code | brkfile | list | unknown -- argument context
+	#		code | brkfile | unknown	-- list context
+	#
+	# syntax: 	argument -> file | code | unknown
+	# 		file -> list | brkfile
+	#		list -> code | brkfile
+	#
+	#		file is a text file
+	#		code is 4-5 characters and no text file
+	#		brkfile is a file with ATOM records
+	#		list is a file that is not a brkfile
+	#
+	local ($item,$context)=@_;
+	local ($isfile);
+
+	if (-T $item) {$isfile=$TRUE;} else {$isfile=$FALSE;};
+	print "\nget_type called with $item ($isfile) in $context\n";
+	if ($context eq "argument") {	# expect file | code
+		$x=length($item);
+		if(($x == 4 || $x==5) && (!$isfile)) { $context="code";
+		} elsif ($isfile){ $context="file";
+		} else { $context="unknown";
+		}
+	} elsif ($context eq "file") {	# expect list | brkfile
+			if(!$isfile) {$context="unknown";} else
+			{
+			  open(IN,$item); $x="list"; while(<IN>)
+			  {if (/^ATOM  /) {$x="brkfile"; last;};}; close(IN);
+			  $context=$x;
+			}
+	} elsif ($context eq "list") {	# expect code | brkfile
+		$x=length($item);
+		if(( $x==4 || $x==5 ) && (!$isfile) ) { $context="code";
+		} else {
+			$x="unknown"; open(IN,$item); while(<IN>)
+			{if (/^ATOM  /) {$x="brkfile"; last;};}; close(IN);
+			$context=$x;
+		}
+	} else { die "get_type called in unknown context \"$context\"";}
+	while ($context ne "list" && $context ne "code" &&
+		$context ne "brkfile" && $context ne "unknown")
+		{$context=&get_type($item,$context);}
+	return $context;
+}
+
+
+#______________________________________________________________________________
+# Title     : prepare_brkfile
+# Usage     :
+# Function  : PDB reader, output is internal data file
+#             This also generates DSSP.
+# Example   :
+# Keywords  :
+# Options   :
+# Author    : holm@ebi.ac.uk, jong@ebi.ac.uk
+# Category  :
+# Returns   :
+# Version   : 1.1
+#------------------------------------------------------------------------------
+sub prepare_brkfile {       # call as prepare_brkfile($query_pdbfile,$short)
+	local ($query_pdbfile,$queryid)=@_;
+	local ($brkheader,$brkcompnd,$brksource,$brkauthor);
+
+# filename length check
+if(length($query_pdbfile) > $max_filename) { die "STOP: file names incl. path must be max $max_filename long\n"; }
+
+
+#----------------------------------------------------------------------------
+# 	It is assumed that query-pdbfile is a full-atom entry ! --> CHECK!
+#		else return empty chain list + warning
+#----------------------------------------------------------------------------
+
+	open(IN,"<$query_pdbfile");
+	while(<IN>) {
+		if(/^ATOM  /){$natom++;if(/ CA  /){$nca++;}}
+		last if(/^ENDMDL/);
+	} close(IN);
+	$x=$natom / ($nca+1);
+	if($x<3){
+		&printstars("suspect $query_pdbfile is CA-only: $nca CAs / $natom total atoms");
+		return;
+	}
+
+#----------------------------------------------------------------------------
+# 	always generate DSSP file 
+#----------------------------------------------------------------------------
+
+	$query_dsspfile = $queryid . ".dssp";
+	&system_cmd($dssp,0,$query_pdbfile,$query_dsspfile);
+
+#----------------------------------------------------------------------------
+# 	chain names arrays
+#----------------------------------------------------------------------------
+
+	undef @CHAIN; undef @CHAINLEN;
+	open(IN,$query_pdbfile); $first=0; undef $chain;
+	while(<IN>) {
+		chop; $line= $_;
+		if(/^ATOM/) {
+			($atom,$xchain)=/^.{13}([" "\w]{4}).{4}([" "\w])/;
+			if ($xchain ne $chain) {
+				if($first != 0) { push(@CHAINLEN,$chain_len); }
+				$first=1; $chain = $xchain;push(@CHAIN, $chain);
+				$chain_num++; $chain_len=0;
+			}
+			if($atom eq "CA  ") { $chain_len++; }
+		}
+		last if (/^ENDMDL/); # use only first model of NMR entries
+	}
+	close(IN);
+	#last line
+	push(@CHAINLEN,$chain_len);
+
+	$x=$#CHAIN+1; 
+	foreach ($[..$#CHAIN){print $CHAIN[$_]," length: ", $CHAINLEN[$_],"\n";}
+
+	# remove short chains
+	undef(@long);
+	foreach($[..$#CHAIN){if($CHAINLEN[$_]>$MINLEN){push(@long,$CHAIN[$_]);}}
+    @CHAIN=@long;
+
+        # make non-redundant list (case: Swissmodel had edited blank-chain residues in A chain)
+	my %x;
+	foreach (@CHAIN) { $x{$_}=1; }
+	undef(@CHAIN);
+	foreach (sort keys %x) { push(@CHAIN,$_); }
+	
+	my $x=$#CHAIN+1;
+        &printstars("$x chains @CHAIN");
+
+	undef(@datafile); undef(@shortcode);
+	foreach $i ( $[ .. $#CHAIN) {
+		if($CHAIN[$i] ne " ") {
+			push(@shortcode,($queryid . $CHAIN[$i]));
+			push(@datafile,($DALIDATDIR_1 . $shortcode[$i] . ".dat"));
+		} else {
+			push(@shortcode,$queryid);
+			push(@datafile,($DALIDATDIR_1 . $queryid . "_.dat"));
+		}
+	}
+
+#----------------------------------------------------------------------------
+# 	domain decomposition
+#----------------------------------------------------------------------------
+
+	&system_cmd($puudefault,1); 
+	#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	# It prints what chains are in PDB file
+	#__________________________________________
+	foreach ($i=$[; $i< @CHAIN;  $i++) {
+        	print "\n CHAIN $CHAIN[$i]\n";
+		&system_cmd("rm -f  domains.puu units.puu subunits.puu");
+		&system_cmd($puu,1,$shortcode[$i],$query_pdbfile,
+			$query_dsspfile);
+		&system_cmd($puutos,2,$query_dsspfile);
+	}
+	undef(@idlist);
+	for $chain(@CHAIN){   
+		print "\n CHAIN : $queryid$chain"; 
+		$x=$queryid;
+		if($chain=~/\w/) { $x.=$chain; }
+		push(@idlist,$x);
+	}
+	print "\n\n";
+
+	return(@idlist);
+}
+
+#----------------------------------------------------------------------------
+# end sub: prepare_brkfile
+#----------------------------------------------------------------------------
+
+#______________________________________________________________________________
+# Title     : declump
+# Usage     :
+# Function  :
+# Example   :
+# Keywords  :
+# Options   :
+# Author    : holm@ebi.ac.uk, jong@ebi.ac.uk
+# Category  :
+# Returns   :
+# Version   : 1.0
+#------------------------------------------------------------------------------
+sub declump {
+	local ($dccpfile,$tmpfile,$DCCPDIRIN,$DCCPDIROUT)=@_;
+	local ($cd1,$file,$outfile,$first,%alis,$block,$keep,$id1,$id2,$cd2,
+		@datakeys,@sortarray,@keepali,@savedalis,@currentali,$i,$k,
+		$nsaved,$overlap,@start,@end,$nali,$nolines,$thisline);
+
+	&printstars("declump: $dccpfile $tmpfile $DCCPDIRIN $DCCPDIROUT");
+	$_=$dccpfile;
+	if(!/^\w+\.dccp$/) { return($FALSE) };
+	($cd1)=/(\w+)\.dccp/; print "cd1 from $dccpfile is $cd1\n";
+	$file=$DCCPDIRIN . $dccpfile;
+	$outfile= $DCCPDIROUT . $dccpfile;
+	print "checking $file\n";
+	open(IN,$file) || warn "WARNING from declump: could not open $file\n";
+	$first=$TRUE;
+	undef %alis;
+	#
+	# step 1: append all blocks per {$cd2}
+	# step 2: foreach key $cd2
+	# step 2.1: foreach block sorted by $z
+	# step 2.1.1: if no overlap with previous saved blocks then save
+	# step 2.2: foreach saved block
+	# step 2.2.1: print block
+	#
+	while(<IN>) {
+		if(/^ DCCP\s+(\d+)/) {
+		    if(!$first && $keep) { $alis{$cd2} .= $block . ';'; }
+		    $block=$_;
+		    $first=$FALSE; $keep=$TRUE;
+		    ($lali,$z,$x,$nali)=/^.{22}\s*(\d+)\s+([\.\d]+)\s+(\d+)\s+(\d+)/;
+		    if($lali <= 0 || $z==0.0) { $keep=$FALSE; }
+		    ($id1,$id2)=/(\w+)\s+(\w+)\s{0,2}$/;
+		    if($id1 eq $cd1) { $cd2=$id2; }
+		    elsif ($id2 eq $cd1) { $cd2=$id1; }
+		    else { $keep=$FALSE; }
+		    print $_;
+
+		    # Now calculate the number of lines to read in for this block (CD)
+		    $nolines = 4 + (int(($nali-1)/8)*2);
+		    $thisline = 1;
+		} else {
+		    if ($thisline < $nolines) { # Only read in no. of lines wanted as..
+			$block .= $_;           # .. the rest is junk. (CD)
+			$thisline++;
+		    }
+		}
+	}
+	if(!$first && $keep) { $alis{$cd2} .= $block . ';'; } ## last block
+	close(IN);
+
+	system("rm -f $tmpfile");
+	open(OUT,"> $tmpfile") || die "could not open $tmpfile\n";
+
+	foreach $cd2 (sort keys %alis) {
+	    @blocks=split(";",$alis{$cd2});
+	    undef(@datakeys);
+	    undef(@sortarray); undef(@keepali);
+	    undef(@savedalis); undef(@currentali);
+	    if($#blocks==0) { print OUT @blocks; } # no need to check singles
+	    else {
+		foreach $i ($[..$#blocks) {
+		    $_=$blocks[$i]; ($z)=/^.{22}\s+\d+\s+([\d\.]+)/;
+		    push(@datakeys,$z);
+		}
+		@sortarray=@blocks[sort bydatakeys $[..$#blocks]; #sort on value
+		$nsaved=0;
+		foreach $j ($[..$#sortarray) {
+			$keep=$TRUE;
+			@currentali=&dccptoali($cd1,$sortarray[$j]);
+			## check against savedalis ##
+			foreach $k (1..$nsaved) {
+				@otherali=@savedalis[$start[$k]..$end[$k]];
+				$overlap=$FALSE;
+				$i=0;
+				while(!$overlap) {
+					$i++;
+					last if($i>$#currentali);
+					if($currentali[$i]>0) {
+						if($otherali[$i] ==
+							$currentali[$i])
+							{ $overlap=$TRUE; }
+					}
+				}
+				$keep=(!$overlap);
+				last if(!$keep);
+			}
+			$keepali[$j]=$keep;
+			if($keep) {
+				$nsaved++;
+				$start[$nsaved]=$#savedalis+1;
+				$end[$nsaved]=$#currentali+$#savedalis;
+				push(@savedalis,@currentali);
+			}
+		}
+		foreach $i ($[..$#sortarray) {if ($keepali[$i])
+			{print OUT $sortarray[$i];}
+		}
+	  }
+	}
+
+	close(OUT);
+	print "overwrite $outfile with $tmpfile\n";
+	system("chmod g+w $tmpfile; rm -f $outfile; mv $tmpfile $outfile");
+}
+
+
+#______________________________________________________________________________
+# Title     : dccptoali
+# Usage     :
+# Function  :
+# Example   :
+# Keywords  :
+# Options   :
+# Author    : holm@ebi.ac.uk, jong@ebi.ac.uk
+# Category  :
+# Returns   :
+# Version   : 1.0
+#------------------------------------------------------------------------------
+sub dccptoali {
+	local ($cd1,$block)=@_;
+	local (@l1,@l2,@r1,@r2,@ali,$i,$i1,$i2,$shift,$nblock,@lines,@ranges,$l);
+	(@lines)=split("\n",$block);
+
+	$_=$lines[$[];
+	($nblock,$id1,$id2)=/\s+(\d+)\s+(\w+)\s+(\w+)\s{0,2}$/;
+
+# DCCP   1    204.5 3.5  73     1.6           5     11                1amx  1kcw
+# alignment
+#   5     8   9    12  18    21  31    35  36    43  66    72  93    97 102   114
+# 122   131 138   141 142   150
+# 918   921 930   933 935   938 945   949 951   958 964   970 972   976 977   989
+# 991  10001001  10041008  1016
+
+	(@ranges)=split(/\s+/,$block);
+	if ($id1 eq $cd1) {
+	    foreach $i (1..$nblock) {
+		($r2[$i])=pop(@ranges);
+		if(length($r2[$i])>4) { $_=$r2[$i]; ($x,$y)=/^(\d+)(\d{4})/; $r2[$i]=$y; push(@ranges,$x); }
+		($l2[$i])=pop(@ranges);
+		if(length($l2[$i])>4) { $_=$l2[$i]; ($x,$y)=/^(\d+)(\d{4})/; $l2[$i]=$y; push(@ranges,$x); }
+	    }
+	    foreach $i (1..$nblock) {
+		($r1[$i])=pop(@ranges);
+		if(length($r1[$i])>4) { $_=$r1[$i]; ($x,$y)=/^(\d+)(\d{4})/; $r1[$i]=$y; push(@ranges,$x); }
+		($l1[$i])=pop(@ranges);
+		if(length($l1[$i])>4) { $_=$l1[$i]; ($x,$y)=/^(\d+)(\d{4})/; $l1[$i]=$y; push(@ranges,$x); }
+	    }
+	} else {					## swap cd2-cd1
+	    foreach $i (1..$nblock) {
+		($r1[$i])=pop(@ranges);
+		if(length($r1[$i])>4) { $_=$r1[$i]; ($x,$y)=/^(\d+)(\d{4})/; $r1[$i]=$y; push(@ranges,$x); }
+		($l1[$i])=pop(@ranges);
+		if(length($l1[$i])>4) { $_=$l1[$i]; ($x,$y)=/^(\d+)(\d{4})/; $l1[$i]=$y; push(@ranges,$x); }
+	     }
+	    foreach $i (1..$nblock) {
+		($r2[$i])=pop(@ranges);
+		if(length($r2[$i])>4) { $_=$r2[$i]; ($x,$y)=/^(\d+)(\d{4})/; $r2[$i]=$y; push(@ranges,$x); }
+		($l2[$i])=pop(@ranges);
+		if(length($l2[$i])>4) { $_=$l2[$i]; ($x,$y)=/^(\d+)(\d{4})/; $l2[$i]=$y; push(@ranges,$x); }
+	    }
+	}
+	undef @ali;
+	foreach $i (1..$nblock) {		# invert negative ranges !!!!
+	    #print "$i -> $l1[$i] .. $r1[$i]   $l2[$i] .. $r2[$i]\n";
+	    $i1=$l1[$i];
+	    $j1=$r1[$i];
+	    $i2=$l2[$i];
+	    $shift=$i2-$i1;
+	    foreach $k ($i1..$j1) { $ali[$k]=$k+$shift; }
+	}
+	return (@ali);
+}
+
+#______________________________________________________________________________
+# Title     : bydatakeys
+# Usage     :
+# Function  :
+# Example   :
+# Keywords  :
+# Options   :
+# Author    : holm@ebi.ac.uk, jong@ebi.ac.uk
+# Category  :
+# Returns   :
+# Version   : 1.0
+#------------------------------------------------------------------------------
+sub bydatakeys{ $datakeys[$b] <=> $datakeys[$a]; }
+
+

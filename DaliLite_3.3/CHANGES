@@ -1,0 +1,275 @@
+==============================================================================
+Changes in DaliLite v.3.3 (Feb 2010)
+==============================================================================
+
+Bin/walk.pl
+===========
+Improved search which updates the best route to a second neighbour on the fly.
+
+==============================================================================
+Changes in DaliLite v.3.2 (Oct 2008)
+==============================================================================
+
+DaliLite
+========
+Obsolete code (-search option) was removed.
+
+Obsolete 'sort +1' syntax changed to 'sort -k 2'
+
+Bin/util.f
+==========
+Bug fix to read MSE residues consistently in PDB & DSSP.
+
+==============================================================================
+Changes in DaliLite v.3.1 (Feb 2008)
+==============================================================================
+
+DaliLite
+========
+Corrected bug in reading x,y,z coordinates less than -99.999 in structure 
+superimposition by -pairwise option.
+
+==============================================================================
+Changes in DaliLite v.3.0 (Feb 2008)
+==============================================================================
+
+Bin/util.f
+==========
+Moved function constructfilnam here from multiple sources.
+
+Bin/sortdccp.pl
+===============
+Added optional argument <nkeep> to remove all but nkeep best alignments per 
+cd1-cd2.
+
+Bin/pipe96.pl
+=============
+Modified to let through only Nbest comparisons per cd1cd2 pair with zscore above
+cutoff. (Previously at least Nbest comparisons and all above zscore cutoff.)
+
+DaliLite
+========
+Arguments to pipe96.pl changed from Nbest=10 to Nbest=1 (see above).
+
+Bin/parsi-admin.f
+=================
+Changed lfirstonly to .true. in call to main(). This means that only one 
+optimal alignment is returned rather than 10 best alignments. Symmetrical
+structures like TIM barrels may get worse scores than before.
+
+Bin/wolf
+========
+New programs wolf-grid, wolf-dbsearch 
+
+==============================================================================
+Changes in DaliLite v.2.4.5 (20 Dec 2007)
+==============================================================================
+
+Bin/DaliLite
+============
+
+The environment variable DALI_DATA_HOME is introduced in the script DaliLite. 
+It allows to have the data and executables located in different places. 
+The variable DALI_SERVER_HOME now concerns only the executables. If unset, 
+DALI_DATA_HOME defaults to current directory. To modify the default value, 
+adjust directly in the script DaliLite.
+
+The value of DALI_SERVER_HOME, if unset in the environment, must be
+adjusted directly in the DaliLite script or, as in previous releases, 
+by setting appropriately the variable $HOMEDIR in the Makefile and 
+proceeding to "make install". In order to have DALI_SERVER_HOME defaulting 
+to the current directory, adjust the DaliLite script.
+
+Bin/parsizes-puutos.f, Bin/parsizes.for
+=======================================
+
+- increased exdim parameter from 300000 to 350000
+
+See Changes v.2.4.4 below for comments on the above increase for exdim.
+
+==============================================================================
+Changes in DaliLite v.2.4.4 (15 Jan 2007)
+==============================================================================
+
+Many parameter increases in this new release. Segfaults were occurring with
+pdb files containing many chains, large chains, or many structure segments.
+These are patches only - they still need to be handled correctly! Watch
+this space...
+
+Bin/parsizes-puutos.f
+=====================
+- increased maxres parameter from 6000 to 12000 to allow for pdb entries
+  with a large number of chains
+- increased exdim parameter from 200000 to 300000
+
+Bin/parsizes.for, Bin/util.f, Bin/parsi-admin.f
+===============================================
+- changed maxseg parameter from 80 to 200, as -align mode was failing
+  for a few large pdb entries, containing many secondary elements
+- increased exdim parameter from 200000 to 300000
+
+Bin/parsizes.for
+================
+- increased exdim parameter from 120000 to 300000 because of out-of-bounds
+  array segfaults (this is a patch - still needs to be properly handled!)
+
+Bin/gagasizes.for
+=================
+- maxres and maxres0 parameters increased to 5000
+
+Bin/parsi-align.f
+=================
+- hidden maxseg=80 increased to 200
+
+
+==============================================================================
+Changes in DaliLite v.2.4.3 (19 Dec 2006)
+==============================================================================
+
+Makefile
+========
+- altered test and clean targets in Makefile - they weren't working properly
+  if directories were missing (as was accidentally the case in release 2.4.2)
+  Targets are now test1 and test2, as are corresponding output directories.
+
+
+==============================================================================
+Changes in DaliLite v.2.4.2 (01 May 2006)
+==============================================================================
+Makefile
+========
+- add warning that the maximum length of HOMEDIR is 70 characters
+
+==============================================================================
+Changes in DaliLite v.2.4.1 (01 Mar 2005)
+==============================================================================
+
+DaliLite
+========
+- default for DALI_SERVER_HOME is now value of env $PWD, in case 'make all'
+  is used instead of 'make install'. Note that 'make install' will still
+  override this default, as will having env $DALI_SERVER_HOME set.
+
+Makefile, Makefile_cygwin
+=========================
+- default Makefile is now for linux. Cygwin users should rename
+  Makefile_cygwin to Makefile.
+- for consistency and clarity, variable 'perlhomedir' renamed to
+  'ESCAPED_HOMEDIR'.
+- removed unnecessary escaped separator ('\/') from line49 where
+  ESCAPED_HOMEDIR is used, as this was making pathnames untidy,
+  eg '/home/you/DaliLite_2.4//Bin/puu'.
+
+INSTALL
+=======
+- minor update to reflect changes in Makefiles and DaliLite main script.
+
+
+==============================================================================
+Changes in DaliLite v.2.4 (16 Dec 2004)
+==============================================================================
+
+DaliLite
+========
+- renamed links in -pairwise HTML output page
+- checking length of input PDB file name, which is hardcoded as 80 in puu.f
+
+Makefile
+========
+- install converts DOS newlines to Unix: perl -pe 's/\015\012/\012/g'
+
+fssp.f
+======
+- made independent of DSSP
+
+gagatool.f, seqfitz.f
+=====================
+- readdssp1 was never called 
+
+==============================================================================
+Changes in DaliLite v.2.3 (30 Aug 2004)
+==============================================================================
+
+Makefile
+========
+- replaces old Fortran program compiler script 
+	make install	# installation
+	make all	# re-compilation
+	make test	# testing DaliLite -pairwise 
+	make test1	# testing 'advanced' DaliLite options
+
+	make clean
+	make clean_test
+	make clean_test1
+	
+util.f
+======
+- new file, collecting subroutines or functions used by many programs
+	subroutine getdssp
+		not reading nhb, nhbp any more
+		strictly requires dsspcmbi (wide format)
+
+ 		MSD reported problem in reading lines with h-bond partners,
+			but presumably it has gone away with DSSPcmbi
+
+	subroutine getcoor 
+		not reading bvalue any more
+
+puu.f
+=====
+- changed arguments to call getdssp from util.f
+- changed arguments to call getcoor
+
+puutos.f
+========
+- changed arguments to call getdssp from util.f
+
+seqfitz.f
+=========
+- changed arguments to call getdssp from util.f
+
+fssp.f
+======
+- changed arguments to call getdssp from util.f
+
+gagatool.f
+==========
+- changed arguments to call getdssp from util.f
+
+dp.f
+====
+- read absolute value (MSD)
+	write(*,601) 'DCCP   1 ',score,rmsd,abs(lali),
+
+DaliLite
+========
+- corrected typo $DALI_SERVER_HOMEy/Bin/replace
+- 'make install' sets $DALI_SERVER_HOME in DaliLite script
+	original copy is $DALI_SERVER_HOME/Bin/DaliLite
+	customised version is SDALI_SERVER_HOME/DaliLite
+
+corescore.f
+===========
+- corescore was disabled in DaliLite, file deleted!
+
+replace.f
+=========
+- list0(maxprot), maxprot set in parsizes.for to have space for all of PDB
+
+include files
+================
+- parsizes.for
+	increased dimensions as suggested by MSD, except maxprot=100000
+	
+- parsizes-puutos.for
+	increased maxprot=100000
+	
+- gagasizes.for
+	(this is the include file for the dalicon program)
+
+	dalicon crashes if increase dimensions as suggested by MSD, therefore
+		using the old dimensions
+	
+	maxdom occurs in gagatool.f: node_type(maxdom)
+
+==============================================================================

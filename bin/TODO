@@ -1,0 +1,15 @@
+
+finish the dali comparison script to actually return the information request
+done - but I need to talk to Dr. Na about output from a given file...
+
+
+
+create a wrapper compare-all-dali script that runs through everything in the list and produces averages.
+
+create a script to run our comparison
+
+Create a script to wrap our comparison and return the averages.
+
+
+
+create a wrapper script that calls both the dali and "our" comparison script - and compares the results to the "real" results.  Have it return stats.

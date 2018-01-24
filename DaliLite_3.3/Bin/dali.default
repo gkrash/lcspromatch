@@ -1,0 +1,8 @@
+#ltop
+TRUE
+#nclone
+1 1 0
+#dalidatpath
+./
+#refitol
+2000.0

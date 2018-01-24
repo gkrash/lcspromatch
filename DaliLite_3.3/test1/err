@@ -1,0 +1,16 @@
+ !!! Residue ASN    2   has  0 instead of expected   4 sidechain atoms.
+     Calculated solvent accessibility refers to incomplete sidechain !!!
+
+ !!! Residue LYS  306   has  0 instead of expected   5 sidechain atoms.
+     Calculated solvent accessibility refers to incomplete sidechain !!!
+
+ !!! Residue LYS  346   has  6 instead of expected   5 sidechain atoms.
+     last sidechain atom name is  OXT
+     calculated solvent accessibility includes extra atoms !!!
+
+STOP  END -- Normal termination  statement executed
+STOP  END -- Normal termination  statement executed
+STOP  END -- Normal termination  statement executed
+# tag cd1=|mol1|/n at ../DaliLite line 995.
+cat: mol1-90.html: No such file or directory
+WARNING FROM: cat mol1-90.html >> pdb90.html

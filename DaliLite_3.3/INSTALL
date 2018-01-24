@@ -1,0 +1,181 @@
+                            * * * * * * * *
+
+                            D A L I L I T E
+
+                            * * * * * * * *
+                                                         v. 3.3   Feb 2010
+
+  *DaliLite was tested with Linux (using ELF) in RedHat version 6.1
+   and in SuSE versions 9.0 and 10.1.
+
+
+  INSTALLATION
+  ============
+
+	--> Short procedure:
+       		tar -zxvf DaliLite.tar.gz
+		cd ./DaliLite_2.4.5/Bin
+		( If you are using cygwin:
+		mv -f Makefile_cygwin Makefile
+		)
+		Edit Makefile to set proper HOMEDIR and ESCAPED_HOMEDIR
+		make install
+		make test1
+		make test2
+		cd ../
+		./DaliLite -help
+
+	--> Verbose description follows:
+
+  DaliLite:
+
+  The DaliLite package consists of many fortran programs and perl5 scripts.
+  To run them in your operating system, you need to compile the fortran
+  programs first. If you are using LINUX, you can try to run it with
+  the distributed LINUX binaries. Note however that you may get errors,
+  eg: "./puu: cannot execute binary file", in which case you will have to
+  remove the offending binaries and recompile the source code ("make clean" then
+  "make all" in Bin directory). DaliLite has been tested in LINUX:
+  RedHat 6.0 with kernel 2.2.12 (Aug 1999)
+  SuSE 9.0 with kernel 2.4.21 (Feb 2005)
+  SuSE 10.1 with kernel 2.6.16 (Dec 2006)
+
+   <0>  Untar the distribution file in a suitable base directory, for example,
+	in your home directory '/home/you/'. Use the following commands:
+	cd /home/you
+	tar -zxvf DaliLite.tar.gz
+	This will create a directory '/home/you/DaliLite_3.x.x'
+
+   <1>  Setting the DaliLite home directory.
+	
+	The main script is called 'DaliLite' in /home/you/DaliLite_3.x.x .
+	$DALI_SERVER_HOME must be set in the DaliLite script to point to this
+	directory, as all other paths are defined relative to $DALI_SERVER_HOME.
+
+	This is probably best done by editing Bin/Makefile, so that recompiling
+	will not alter these settings. Set HOMEDIR to '/home/you/DaliLite_2.x.x'
+	and ESCAPED_HOMEDIR to '\/home\/you\/Dalilite_2.x.x', then make install:
+	cd Bin
+	make install
+	
+	Alternatively, you can set an ENV variable DALI_SERVER_HOME to the
+	base directory you will be using for Dalilite, eg
+	export DALI_SERVER_HOME=/home/you/DaliLite_3.x.x (bash) or
+	setenv DALI_SERVER_HOME /home/you/DaliLite_3.x.x (csh)
+
+   <2>  There are a few external programs. They are: 'dssp' and 'fasta'
+	at the moment. DSSP is required. Fasta is not used, but could
+	be used as an optional prefilter in database searching.
+	
+	Unless you use LINUX, you MUST copy working
+	versions of them for your OS in $DALI_SERVER_HOME/Bin directory.
+	
+	DSSP program source is included in Bin/src/dsspcmbi
+	Use the instructions in Bin/src/dsspcmbi to compile the program,
+	and copy the executable to Bin/ (rename 'dssp').
+	
+	FASTA is disabled by default, but can be downloaded from:
+	ftp://ftp.virginia.edu/pub/fasta/
+	
+	You will need to compile FASTA to your OS, if it isn't LINUX.
+	To enable running of fasta in database searching, set
+	$run_fasta=$TRUE in the DaliLite script.
+	
+   <3>  Perl5. Perl version used to test DaliLite was v5.8.0 (http://www.perl.com/)
+	
+   <4>  Fortran Compiler
+	
+	If you have any common 'f77' fortran compiler in your execution PATH,
+	you can run 'make all' to compile all the fortran programs inside
+	"$DALI_SERVER_HOME/Bin". Remove all existing binaries first (not the
+	perlscripts!), then:
+	cd ./Bin
+	make all
+	
+	Ignore warnings by f77. If you can debug these warnings, please
+	send us the debugged files(xxx.f) to us so that we can update
+	DaliLite.  (holm@ebi.ac.uk)
+	
+	If you get some compiler-related errors, you need to debug
+	the corresponding xx.f files to complete the compilation.
+	
+	If you found a bug or changed lines to fit to your own compiler,
+	please report it to liisa.holm@helsinki.fi, so that we can incorporate
+	the changes for the next release.
+	
+	The GNU f77 fortran compiler was used. To run f77 which is linked to
+	an executable file 'g77', you need gcc C compiler as well. If you are
+	using redhat distribution of LINUX, you can download the compiler
+	from /contrib/ directory of common LINUX distribution sites.
+	
+	If you have difficulty in running f77(g77), you can use other free
+	or commercial fortran compiler to compile various source files of
+	DaliLite. We have tried to use Absoft, NAG, Fusitzu compiler, PGfortran,
+	and so on. Some of the URLs:
+	  http://www.gnu.org/software/fortran/fortran.html
+	  http://www.nag.co.uk/nagware/nag_77to90.html
+	  http://www.absoft.com
+	  http://www.tools.fujitsu.com
+	  http://www.pgroup.com/
+	  http://www.microway.com/compilers/ndpfort.html
+	  http://www.psrv.com/
+
+
+   <5>  Testing.
+	
+    <5.1>  Simple pairwise mode of DaliLite
+	Use this if you simply want to know the structural superimposition of two
+	PDB files. The pairwise comparison takes two PDB files as input and 
+	generates a web page index.html with pointers to the results. 
+	cd ./Bin
+	make test1
+	lynx ../test1/index.html
+	
+	Note that if you run 'DaliLite -pairwise' again in the same directory
+	(./test1), any previous results will be overwritten. 
+	
+	Directory 'example/' contains a copy of the outputs for you to compare
+	with yours.
+
+    <5.2>  Advanced usage of DaliLite
+	The advanced options are intended for users who want to run multiple 
+	comparisons. In contrast to the simple -pairwise option above, the 
+	advanced options store protein coordinate data and structural alignment 
+	results in internal databases for later (re)use. A summary of the
+	advanced options can be viewed by running "./DaliLite -help".
+	
+	To test if the acquired DaliLite is working, run make test2 in the Bin
+	directory. There is a file 'test.sh' in the test2 directory which can be
+	run in a batch. Note that the FSSP file is very useful as it has the
+	structural alignment information.
+	
+	cd Bin
+	make test2
+	lynx ../test2/1fkx.html
+	lynx ../test2/2kauC.html
+	
+	If you did not see any bad errors, DaliLite installation to your system
+	was successful!
+	
+	Directory 'test2/example_output' contains a copy of the outputs for
+	you to compare with yours.
+	
+	There is a log file test.log which is the stdout from test.sh.
+	Note that you may get different numbers on different systems because
+	optimization algorithms used are stochastic.
+	
+	Apart from the above mentioned outputs, there are DAT files generated
+	and stored in the 'DAT/' directory. If 4 files exist in there...
+	1fkx_.dat  2kauA.dat  2kauB.dat  2kauC.dat
+	... your testing was good. If not, something went wrong which you would
+	have noticed already in the testing steps.
+	
+   <6>  Thank you for working in science.
+
+
+<ERROR handling>
+       
+       File 'dali.lock' is generated everytime DaliLite is run.
+       If the file is still there, new DaliLite processes won't run.
+       Therefore you will need to remove it:
+       rm -f dali.lock

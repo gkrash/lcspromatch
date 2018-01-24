@@ -1,0 +1,7 @@
+# Query: mol1A
+# No:  Chain   Z    rmsd lali nres  %id PDB  Description
+   1:  mol2-A 58.0  0.0  327   327  100                                                                        
+
+# Structural equivalences
+   1: mol1-A mol2-A     1 - 327 <=>    1 - 327   (ALA    4  - LEU  330  <=> ALA    4  - LEU  330 )                          
+

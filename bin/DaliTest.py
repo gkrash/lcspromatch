@@ -1,0 +1,117 @@
+#!/usr/bin/python3
+
+import os, sys, shutil, subprocess
+from subprocess import call
+from sys import argv
+
+
+# Script to test comparing 2 proteins with DALILite's local pairwise mode.
+
+# Execution is in the form of "DaliTest.py <protein1> <protein2>"
+# Input files are expected to follow the PDB95 standard from <TODO: Insert citation to site I downloaded the source from>
+
+# Output is in the form of: z-score-of-match heierarchy-comparison-true-false
+
+# Where:
+
+# The z-score is gleaned from the top match returned by DaliLite (from the summary file produced, top match)
+# The heierarchy match is at the following level:
+
+# The heierarchy match between the two is true or false depending on the variable below.
+
+# Match Level corresponds to:
+# https://scop.berkeley.edu/help/ver=1.71
+# where:
+#
+# 0 = Root, all should match here (useless)
+# 1 = Class
+# 2 = Fold
+# 3 = Superfamily
+# 4 = Family
+
+matchLevel = 3
+
+# DaliLite Location:
+daliLiteCMD = "/home/krash/git/gcs-comp/DaliLite_3.3/DaliLite"
+
+# Temp space
+tmp = "/tmp"
+
+
+## Start program
+# Return Variables:
+Z = float(0)
+rmsd = float(0)
+lali = 0
+nres = 0
+idPct = 0
+isMatch = 0
+
+# Command line input
+script, protein1File, protein2File = argv
+
+# what to match on for the heierarchy from SCOP:
+matchOn = "SCOPe-sccs:"
+nameLine = "SCOPe-sid:"
+
+protein1Categorization = ""
+protein1Name = ""
+with open(protein1File, 'r') as f:
+    for line in f:
+        if(len(line.split()) >= 4 and line.split()[3] == matchOn):
+            protein1CatList = line.split()[4].split('.')
+        elif(len(line.split()) >= 4 and line.split()[3] == nameLine):
+            protein1Name = line.split()[4]
+
+protein2Categorization = ""
+protein2Name = ""
+with open(protein2File, 'r') as f:
+    for line in f:
+        if(len(line.split()) >= 4 and line.split()[3] == matchOn):
+            protein2CatList = line.split()[4].split('.')
+        elif(len(line.split()) >= 4 and line.split()[3] == nameLine):
+            protein2Name = line.split()[4]
+
+# Compare the two categorizations first and compare to the order we want.
+for i in range(0,matchLevel):
+    # print(protein1CatList[i],protein2CatList[i])
+    if(protein1CatList[i] != protein2CatList[i]):
+        isMatch = 0
+        break
+    else:
+        isMatch = 1
+
+
+
+# Make sure we've got a clean directory to test from
+
+tmpFolder = tmp + "/daliLiteTest"
+
+if(os.path.isdir(tmpFolder)):
+    shutil.rmtree(tmpFolder)
+
+os.makedirs(tmpFolder)
+
+
+# Run the DaliLite program..
+try:
+    FOUT = open(tmpFolder + '/stdout', 'w')
+    retcode = call(daliLiteCMD + " -pairwise " + protein1File + " " + protein2File, shell=True, cwd=tmpFolder, stderr=subprocess.STDOUT, stdout=FOUT)
+except OSError as e:
+    print >>sys.stderr, "Execution failed:", e
+
+
+# Now that we've got our output, we need to troll the Summary.txt for our z-score / match info...
+summaryFile = tmpFolder + "/summary.txt"
+with open(summaryFile, 'r') as f:
+    for line in f:
+        if(line.split()[0] == '1:'):
+            Z = line.split()[2]
+            rmsd = line.split()[3]
+            lali = line.split()[4]
+            nres = line.split()[5]
+            idPct = line.split()[6]
+            break
+
+# Output
+print(protein1Name + "," + protein2Name + "," + str(Z) + "," + str(isMatch))

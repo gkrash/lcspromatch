@@ -1,0 +1,115 @@
+
+                            * * * * * * * *
+
+                            D A L I L I T E
+
+                            * * * * * * * *
+                                                         v. 3.3 Feb 2010
+
+  (1) DaliLite is a distribution of DALI server for standalone structure
+      comparison and alignment. DALI stands for Distance matrix ALIgnment.
+
+      DaliLite is a program for pairwise structure comparison and for database
+      searching.  It does not create or update the database searched against
+      which is available from EBI.
+
+      DaliQuiz.cgi is graphical viewing script via internet.
+
+  (2) Reference:
+      Holm, L., & Sander, C. (1996). Mapping the protein universe. Science 273,
+      	595-602
+      Holm, L., & Park, J. (2000). DaliLite workbench for structure comparison.
+      	Bioinformatics 16(6):566-567
+
+  (3) For installation, see INSTALL. For changelog, see CHANGES.
+
+  (4) The Dali Server can be found here:   http://www.ebi.ac.uk/dali/
+
+  (5) Author contact: holm@embl-ebi.ac.uk
+
+  (6) For detailed usage instructions, run DaliLite with option -help.
+
+  (7) Availability: academic licence. Commercial use is strictly prohibited.
+
+	Please complete this licence agreement form, sign, keep a copy,
+	and return by paper mail to:
+
+	Liisa Holm
+	Institute of Biotechnology
+	P.O.Box 56 (Viikinkaari 5)
+	FI-00014 University of Helsinki
+	Finland
+
+	or fax it:
+
+	FAX:  +358 919159079
+
+
+cut here
+_______________________________________________________________________________
+
+                          ACADEMIC LICENCE AGREEMENT
+
+                             FOR THE PROGRAM DaliLite
+
+                                BY Liisa Holm
+
+An academic licence agreement for the DaliLite program
+
+(c) L. Holm 1993-2007
+
+is granted to ....................................
+
+in exchange for the following commitments:
+
+I hereby certify that
+
+        (1) I am an academic user at an academic research institution. In
+            using the software, We will respect the interests of the authors
+            and their institutions.
+
+        (2) I will not use the software in commercial activities without
+            a written commercial licence agreement; commercial activities
+            include, in particular, work under contract from a commercial
+            company.
+
+        (3) I will not redistribute the software to others outside of my
+            immediate research group. I will suggest to other interested
+            research groups to contact the authors directly. When I leave
+            my current institution, I will either delete the software or
+            reapply for a new licence.
+
+        (4) I will not alter or suppress the run-time copyright message.
+
+        (5) I will acknowledge the program authors on any publication of
+            scientific results based in part on use of the program and
+            cite the article in which the program was described (Holm,L. &
+            Sander,C. 1996 "Mapping the protein universe", Science 273,
+            595-602).
+
+        (6) I will report evidence of program bugs to the authors.
+
+        (7) I will send the source code of any bug corrections and program
+            extensions, major or minor, to the original authors, for free
+            academic use. If I have made major extensions which are incor-
+            porated by the authors, I reserve the right to be appropriately
+            included in any future commercial licence agreement.
+
+        (8) I will not extract part of the software, e.g. modules or sub-
+            routines, for use in other contexts without permission by the
+            authors.
+
+        (9) I will not use the program in the context of classified research.
+
+Purpose of research:
+
+Full name and institutional address:
+
+Internet email adress:
+
+Date:                           Signature:
+
+
+_______________________________________________________________________________
+
+
