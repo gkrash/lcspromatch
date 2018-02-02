@@ -225,31 +225,36 @@ for row in range(0,protein1['size']):
             # Adding that error to that which was previously calculated - we only need to add in a single new atom from each protein, since we have
             # made reasonably optimal decisions previously.
 
+            # Don't need this either.
+            # leastList = []
+            # leastLocalErr = errLim * 2 # just so I know this is bigger than anything we'll see.
 
-            leastList = []
-            leastLocalErr = errLim * 2 # just so I know this is bigger than anything we'll see.
+            # This is the bit of code that calculated ALL of the pairwise distances - I'm commenting it out because now we only want to
+            # look at adding to the end of the sequence (which in retrospect makes a lot more sense.)
 
-            for p1index in range(0,row):
-                # Get the values..
-                for p2index in range(0,col):
-                    mySeqAdd = [p1index,p2index]
-
-                    if(p1pwm[row][p1index] >= errLim or p2pwm[col][p2index] >= errLim):
-                        myErr = errLim * 2 # Our universal sign of "don't go here" if either of  our limits is too big.
-                    else:
-                        myErr = abs(p1pwm[row][p1index] - p2pwm[col][p2index])
-
-                    # This will get us a single "least" error for each atom pair in our subset
-                    if(myErr < leastLocalErr):
-                        myResult = [myErr,[[row,p1index],[col,p2index]]]
-                        leastList.append(myResult)
-
-
-            localError, diagSeqAdd = min(leastList, key=lambda x: (x[0])) # Just to make sure we're only checking the err, not the seq.
+            # for p1index in range(0,row):
+            #     # Get the values..
+            #     for p2index in range(0,col):
+            #
+            #         if(p1pwm[row][p1index] >= errLim or p2pwm[col][p2index] >= errLim):
+            #             myErr = errLim * 2 # Our universal sign of "don't go here" if either of  our limits is too big.
+            #         else:
+            #             myErr = abs(p1pwm[row][p1index] - p2pwm[col][p2index])
+            #
+            #         # This will get us a single "least" error for each atom pair in our subset
+            #         if(myErr < leastLocalErr):
+            #             myResult = [myErr,[[row,p1index],[col,p2index]]]
+            #             leastList.append(myResult)
 
 
-            # Removing since we're ignoring the translation bit now.
-            # diagErr = errorFunc(p1x,p1y,p1z,p2x + gcsTlx[row-1][col-1],p2y + gcsTly[row-1][col-1], p2z + gcsTlz[row-1][col-1]) + gcsSeqErr[row-1][col-1]
+
+            # This line figures out the difference between the current and previous backbones in p1, compared with the current and previous backbones in p2.
+            myErr = abs(p1pwm[row][row-1] - p2pwm[col][col-1])
+            if( myErr > errLim):
+                diagLen = 0 # Simple way of saying "don't do this if the error is too great"
+            else:
+                diagErr = myErr + gcsSeqErr[row-1][col-1]
+
             if(localError > errLim):
                 diagLen = 0 # simple way of ensuring we don't take the diagonal if it's greater than our error limit.
 
