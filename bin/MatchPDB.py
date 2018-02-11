@@ -94,6 +94,23 @@ def getAtomInfo(protein, number):
     print("Distances from Next: ", p1distanceFromNext, ", ", p2distanceFromNext)
 
 
+# Sub to print out a list of intra-CA distances, along with a sum of the error for each..
+# Maybe this will provide some numberic insight as to what we want to see.
+def getDistanceInfo():
+    p1name = proteinId1
+    p2name = proteinId1
+
+    totDist = 0
+    for idx in range(1,protein1['size']):
+        resi = protein1['residueSeq'][idx]
+
+        # TODO: Eventually may want to fix this so it works on a "generic" protein so they don't have to be the same length
+        distFromPrevResi1 = p1pwm[idx-1][idx]
+        distFromPrevResi2 = p2pwm[idx-1][idx]
+        # totDist = totDist + distToNextResi
+        print(str(resi) + "," + str(distFromPrevResi1) + "," + str(distFromPrevResi2))
+
+
 # I'm doing this  with separate associatave arrays, because it's simpler for now.
 protein1 = {}
 protein2 = {}
