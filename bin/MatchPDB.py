@@ -284,22 +284,25 @@ for row in range(0,protein1['size']):
             else:
                 diagErr = myErr + gcsSeqErr[row-1][col-1]
 
-            if(localError > errLim):
-                diagLen = 0 # simple way of ensuring we don't take the diagonal if it's greater than our error limit.
-
-            diagErr = localError + gcsSeqErr[row-1][col-1]
+        # slightly confusing, but.. do this if we're in the first row or col..
         else:
-            diagErr = float(errLim*2)
-            diagLen = 0
+            diagErr = 0
+            diagLen = -1
 
-        # What's it look like if we start again with a new chain
-        selfLen = 1
-        selfErr = 0
+        # We also need to check all of these against the current cell as it stands.
+        if(row > 0 and col > 0):
+            selfLen = 1 # if we pick this, we've got at least a length of 1
+            selfErr = abs(p1pwm[row][row-1] - p2pwm[col][col-1])
+
+        # if we're in the first row or col, don't do anything at all..
+        else:
+            selfErr = 0
+            selfLen = 0
 
         # Now we need to build out a list of the options so we can max() it
 
         # print(leftErr, upErr, diagErr, selfErr)
-        extension = [[leftLen,leftErr,'left'],[upLen,upErr,'up'],[diagLen,diagErr,'diag'],[selfLen,selfErr,'self']]
+        extension = [[selfLen,selfErr,'self'],[leftLen,leftErr,'left'],[upLen,upErr,'up'],[diagLen,diagErr,'diag']]
 
         # Now we can do this fanciness to get max length FIRST with min error for that max length.
         # TODO: This is really a place that we can look to make some improvements
