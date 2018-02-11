@@ -206,7 +206,8 @@ for row in range(0,protein1['size']):
         x2 = protein1['x'][col]
         y2 = protein1['y'][col]
         z2 = protein1['z'][col]
-        p1pwm[row].append(errorFunc(x1,y1,z1,x2,y2,z2))
+        # Determine the distance between the two C-alphas (backbones)
+        p1pwm[row].append(distFunc(x1,y1,z1,x2,y2,z2))
 
 p2pwm = []
 for row in range(0,protein2['size']):
@@ -218,7 +219,8 @@ for row in range(0,protein2['size']):
         x2 = protein2['x'][col]
         y2 = protein2['y'][col]
         z2 = protein2['z'][col]
-        p2pwm[row].append(errorFunc(x1,y1,z1,x2,y2,z2))
+        # Determine the distance between the two C-alphas (backbones)
+        p2pwm[row].append(distFunc(x1,y1,z1,x2,y2,z2))
 
 # Now that we have our pairwise matricies, we can produce the greatest common
 # subsequence matrices.  The naming convention we will use will be:
