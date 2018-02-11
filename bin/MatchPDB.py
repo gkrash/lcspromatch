@@ -55,12 +55,16 @@ from sys import argv
 script, proteinId1, proteinId2 = argv
 
 # This is our error limit, in angstroms beyond which we will not extend further.
-errLim = 13 # Greater than 13 angstroms indicates that the backbones arne't linked in the first place.
+# Originally I had 13 angstroms in here, but that's WAY too big.. May be worth stating that if our gap is bigger than 13, we have an error state..
 
+# So I pulled this number from some statistical analysis on the 1AON_A and 1AON_H proteins
+# It's the mean difference in intra-CA distance (0.023567944) plus a standard deviation (0.018285768)
+# Theory is that if we have a situation where it's a standard deviation above the mean, we're in a weird situation and should gap.
+errLim = .04185371 # experimetally derived from the test proteins -
 
 
 # This is our error function, since we will likely be modifying that some:
-def errorFunc(x1,y1,z1,x2,y2,z2):
+def distFunc(x1,y1,z1,x2,y2,z2):
     return(math.pow(math.pow((x1-x2),2) + math.pow((y1-y2),2) + math.pow((z1-z2),2), .5))
 
 
