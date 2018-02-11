@@ -24,3 +24,5 @@ to pull in data, and parse output.
 1. Next, set up the environment with pipenv, cd to the project dir and execute `pipenv --python 3.6`
 1. Fire up a shell in this environment with `pipenv shell` and start running things
 **note:** if you DO want to install some additional packages, hop out of that shell, and install them with `pipenv install <package>` from the repository root.  This will ensure they get added to the Pipfile.
+
+That should do it, all that needs to happen at this point is to try out the `bin/MatchPDB.py` script with your 2 favorite PDB files.
