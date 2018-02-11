@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 # <Ignore this for now, it's just a placeholder, hasn't been posted anywhere>
 # TODO: fill the header section out appropriately.
