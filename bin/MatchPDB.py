@@ -117,17 +117,21 @@ protein2 = {}
 
 protein1['name'] = proteinId1
 protein1['serial'] = []
+protein1['residueSeq'] = []
 protein1['x'] = []
 protein1['y'] = []
 protein1['z'] = []
 protein1['size'] = 0
+protein1['source'] = [] # we're going to pull the whole thing into an object too
 
 protein2['name'] = proteinId2
 protein2['serial'] = []
+protein2['residueSeq'] = []
 protein2['x'] = []
 protein2['y'] = []
 protein2['z'] = []
 protein2['size'] = 0
+protein2['source'] = [] # we're going to pull the whole thing into an object too
 
 
 # Here lies our load code - again, obtuse, but for simplicity.
@@ -143,11 +147,14 @@ with open(infile, 'r') as f:
         # If the line is an atomic backbone structure line...
 
         if (line[0:5] == 'ATOM ' and line[12:16] == ' CA '):
+            protein1['source'].append(line.rstrip())
             serial = "".join(line[6:11].split())
+            residueSeq = "".join(line[22:26].split())
             x = float("".join(line[30:37].split()))
             y = float("".join(line[38:45].split()))
             z = float("".join(line[46:53].split()))
             protein1['serial'].append(serial)
+            protein1['residueSeq'].append(residueSeq)
             protein1['x'].append(x)
             protein1['y'].append(y)
             protein1['z'].append(z)
@@ -166,11 +173,14 @@ with open(infile, 'r') as f:
         # If the line is an atomic backbone structure line...
 
         if (line[0:5] == 'ATOM ' and line[12:16] == ' CA '):
+            protein2['source'].append(line.rstrip())
             serial = "".join(line[6:11].split())
+            residueSeq = "".join(line[22:26].split())
             x = float("".join(line[30:37].split()))
             y = float("".join(line[38:45].split()))
             z = float("".join(line[46:53].split()))
             protein2['serial'].append(serial)
+            protein2['residueSeq'].append(residueSeq)
             protein2['x'].append(x)
             protein2['y'].append(y)
             protein2['z'].append(z)
@@ -363,8 +373,21 @@ for row in range(0,protein1['size']):
 
 
 
-# print(np.matrix(gcsSeqLen))
-# print(np.matrix(gcsSeqErr))
+# output a selection of atoms in PDB format, from each structure so that we can import to PyMOL for analysis
+# We'll also pull the coordinates for the matched proteins in both, so that we can do our RMSD calculation on them.
+outfile1="p1.pdb" # TODO: fix these output files to be something intelligent
+outfile2="p2.pdb" # TODO: fix these output files to be something intelligent
+
+with open(outfile1, 'w') as f1, open(outfile2, 'w') as f2:
+    for idx in range(0,len(gcsSequence[protein1['size']-1][protein2['size']-1])):
+        p1idx,p2idx = gcsSequence[protein1['size']-1][protein2['size']-1][idx]
+        f1.write(protein1['source'][p1idx]+'\n')
+        f2.write(protein2['source'][p2idx]+'\n')
+f1.close()
+f2.close()
+
+
+    # print(protein1['residueSeq'][p1idx], protein1['residueSeq'][p2idx])
 
 longestChain = str(len(gcsSequence[protein1['size']-1][protein2['size']-1]))
 
