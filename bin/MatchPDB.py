@@ -279,6 +279,7 @@ for row in range(0,protein1['size']):
 
             # This line figures out the difference between the current and previous backbones in p1, compared with the current and previous backbones in p2.
             myErr = abs(p1pwm[row][row-1] - p2pwm[col][col-1])
+
             if( myErr > errLim):
                 diagLen = 0 # Simple way of saying "don't do this if the error is too great"
             else:
@@ -329,9 +330,13 @@ for row in range(0,protein1['size']):
         elif(direction == 'self'):
             gcsSequence[row][col] = [[row,col]]
 
+    # if(row==0): print(gcsSequence[row])
 
 
+# print(np.matrix(gcsSeqLen))
+# print(np.matrix(gcsSeqErr))
 
+chainSize = str(len(gcsSequence[protein1['size']-1][protein2['size']-1]))
 
 
 # output a selection of atoms in PDB format, from each structure so that we can import to PyMOL for analysis
@@ -357,7 +362,15 @@ e.flatten()
 errorMean = str(np.mean(e))
 errorStdDev = str(np.std(e))
 
+print("Protein 1 backbone length: " + str(protein1['size']))
+print("Protein 2 backbone length " + str(protein2['size']))
 # print("Longest common set of backbones: " + str(len(gcsSequence[protein1['size']-1][protein2['size']-1])))
 # pprint.pprint(gcsSeqErr)
 
 
+# Get info about a particular CA Atom...
+#getAtomInfo(protein1,267)
+
+# Print out distance info
+# getDistanceInfo()
+print(chainSize + "," + errorMean)
