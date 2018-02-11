@@ -18,6 +18,7 @@ import numpy as np
 
 # Needed for command line stuff
 from sys import argv
+import inspect, os
 
 
 # Example of what the input file / format looks like:
@@ -51,6 +52,8 @@ from sys import argv
 # inpath = '../pdb/'
 # inpath = './'
 
+# Defining our local tmpdir for output if we need it.
+tmpdir = str(os.path.dirname(os.path.dirname(os.path.abspath(inspect.stack()[0][1]))))+"/tmp"
 
 # Pull our input files from the command line directly..
 script, proteinId1, proteinId2 = argv
@@ -116,7 +119,7 @@ def getDistanceInfo():
 protein1 = {}
 protein2 = {}
 
-protein1['name'] = proteinId1
+protein1['name'] = os.path.splitext(os.path.basename(proteinId1))[0]
 protein1['serial'] = []
 protein1['residueSeq'] = []
 protein1['x'] = []
@@ -125,7 +128,7 @@ protein1['z'] = []
 protein1['size'] = 0
 protein1['source'] = [] # we're going to pull the whole thing into an object too
 
-protein2['name'] = proteinId2
+protein2['name'] = os.path.splitext(os.path.basename(proteinId2))[0]
 protein2['serial'] = []
 protein2['residueSeq'] = []
 protein2['x'] = []
@@ -341,8 +344,11 @@ chainSize = str(len(gcsSequence[protein1['size']-1][protein2['size']-1]))
 
 # output a selection of atoms in PDB format, from each structure so that we can import to PyMOL for analysis
 # We'll also pull the coordinates for the matched proteins in both, so that we can do our RMSD calculation on them.
-outfile1="p1.pdb" # TODO: fix these output files to be something intelligent
-outfile2="p2.pdb" # TODO: fix these output files to be something intelligent
+# This will output in the 'tmp' folder in the root of the project.
+
+outfile1 = tmpdir + os.sep + protein1['name'] + "-aligned.pdb"
+outfile2 = tmpdir + os.sep + protein2['name'] + "-aligned.pdb"
+print(outfile1)
 
 with open(outfile1, 'w') as f1, open(outfile2, 'w') as f2:
     for idx in range(0,len(gcsSequence[protein1['size']-1][protein2['size']-1])):
