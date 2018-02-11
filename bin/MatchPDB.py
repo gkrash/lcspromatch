@@ -6,6 +6,7 @@
 # Written by: Gary Krasovic <gkrasovic@gmail.com> in conjunction wth PSH
 #
 
+
 # Imports!
 # For squaring and the like.
 import math
@@ -227,24 +228,16 @@ for row in range(0,protein2['size']):
 # gcsSequence[p1][p2] = [se,qu,en,ce]
 # gcsSeqLen[p1][p2] = int(sequenceLength)
 # gcsSeqErr[p1][p2] = float(totalSequenceError)
-# gcsTlx = float (translation of p2 from x at beginning of chain)
-# gcsTly = float (translation of p2 from y at beginning of chain)
-# gcsTlz = float (translation of p2 from z at beginning of chain)
 
 gcsSequence = []
 gcsSeqLen = []
 gcsSeqErr = []
-gcsTlx = []
-gcsTly = []
-gcsTlz = []
 
 for row in range(0,protein1['size']):
     gcsSequence.append([])
     gcsSeqLen.append([])
     gcsSeqErr.append([])
-    gcsTlx.append([]) # Translation variables, we're not really using these anymore.
-    gcsTly.append([]) # Translation variables, we're not really using these anymore.
-    gcsTlz.append([]) # Translation variables, we're not really using these anymore.
+
     for col in range(0,protein2['size']):
 
         # Add a sequence array to this cell so we can append to it.
@@ -264,16 +257,16 @@ for row in range(0,protein1['size']):
             leftErr = gcsSeqErr[row][col-1]
             leftLen = gcsSeqLen[row][col-1]
         else:
-            leftErr = float(errLim*2)
-            leftLen = 0
+            leftErr = 0
+            leftLen = -1
 
         # Get Len / Err of the upper cell
         if(row > 0): # So we don't go left if we're *on* the left.
             upErr = gcsSeqErr[row-1][col]
             upLen = gcsSeqLen[row-1][col]
         else:
-            upErr = float(errLim*2)
-            upLen = 0
+            upErr = 0
+            upLen = -1
 
         # Get Len / Err of extending from the diagonal
         if(row > 0 and col > 0):
@@ -283,29 +276,6 @@ for row in range(0,protein1['size']):
             # "row" is the index of the new atom in p1, "col" is the index of the new atom in p2.
             # Adding that error to that which was previously calculated - we only need to add in a single new atom from each protein, since we have
             # made reasonably optimal decisions previously.
-
-            # Don't need this either.
-            # leastList = []
-            # leastLocalErr = errLim * 2 # just so I know this is bigger than anything we'll see.
-
-            # This is the bit of code that calculated ALL of the pairwise distances - I'm commenting it out because now we only want to
-            # look at adding to the end of the sequence (which in retrospect makes a lot more sense.)
-
-            # for p1index in range(0,row):
-            #     # Get the values..
-            #     for p2index in range(0,col):
-            #
-            #         if(p1pwm[row][p1index] >= errLim or p2pwm[col][p2index] >= errLim):
-            #             myErr = errLim * 2 # Our universal sign of "don't go here" if either of  our limits is too big.
-            #         else:
-            #             myErr = abs(p1pwm[row][p1index] - p2pwm[col][p2index])
-            #
-            #         # This will get us a single "least" error for each atom pair in our subset
-            #         if(myErr < leastLocalErr):
-            #             myResult = [myErr,[[row,p1index],[col,p2index]]]
-            #             leastList.append(myResult)
-
-
 
             # This line figures out the difference between the current and previous backbones in p1, compared with the current and previous backbones in p2.
             myErr = abs(p1pwm[row][row-1] - p2pwm[col][col-1])
@@ -338,38 +308,24 @@ for row in range(0,protein1['size']):
         gcsSeqLen[row].append(foundLen)
         gcsSeqErr[row].append(foundErr)
 
-
         # print(direction,row,col, foundErr)
         # Now we just need to populate the other arrays.
         if(direction == 'left'):
-            gcsSequence[row][col] = gcsSequence[row][col - 1]
-            # gcsTlx[row].append(gcsTlx[row][col - 1])
-            # gcsTly[row].append(gcsTly[row][col - 1])
-            # gcsTlz[row].append(gcsTlz[row][col - 1])
+            gcsSequence[row][col] = []
+            gcsSequence[row][col] += gcsSequence[row][col - 1]
+
         elif(direction == 'up'):
-            gcsSequence[row][col] = gcsSequence[row - 1][col]
-            # gcsTlx[row].append(gcsTlx[row - 1][col])
-            # gcsTly[row].append(gcsTly[row - 1][col])
-            # gcsTlz[row].append(gcsTlz[row - 1][col])
+            gcsSequence[row][col] = []
+            gcsSequence[row][col] += gcsSequence[row - 1][col]
+
         elif(direction == 'diag'):
             gcsSequence[row][col] = []
             gcsSequence[row][col] += gcsSequence[row-1][col-1]
-
-            # print("Copied from Diagnonal " + str(gcsSequence[row][col]))
             gcsSequence[row][col].append([row,col])
 
-            # print("Final value "+ str(gcsSequence[row][col]))
-            # gcsTlx[row].append(gcsTlx[row - 1][col])
-            # gcsTly[row].append(gcsTly[row - 1][col])
-            # gcsTlz[row].append(gcsTlz[row - 1][col])
         elif(direction == 'self'):
             gcsSequence[row][col] = [[row,col]]
 
-            # This is a funny one, since it's a new chain, we're re-centering, and storing what we're translating by so we can use it later.
-            # # gcsSeqErr[row][column] = 0 - may consider bringing this back later - I want to leave something here now though to demerit bad matches.
-            # gcsTlx[row].append(p1x - p2x)
-            # gcsTly[row].append(p1y - p2y)
-            # gcsTlz[row].append(p1z - p2z)
 
 
 
@@ -391,7 +347,6 @@ f2.close()
 
     # print(protein1['residueSeq'][p1idx], protein1['residueSeq'][p2idx])
 
-longestChain = str(len(gcsSequence[protein1['size']-1][protein2['size']-1]))
 
 # Error calculations
 e = np.array(gcsSeqErr)
@@ -399,10 +354,7 @@ e.flatten()
 errorMean = str(np.mean(e))
 errorStdDev = str(np.std(e))
 
-# print("Protein 1 backbone length: " + str(protein1['size']))
-# print("Protein 2 backbone length " + str(protein2['size']))
 # print("Longest common set of backbones: " + str(len(gcsSequence[protein1['size']-1][protein2['size']-1])))
 # pprint.pprint(gcsSeqErr)
 
 
-print(longestChain + "," + errorMean)
