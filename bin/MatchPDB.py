@@ -3,7 +3,7 @@
 # <Ignore this for now, it's just a placeholder, hasn't been posted anywhere>
 # TODO: fill the header section out appropriately.
 # GCS-compare for protein structures
-# Written by: Gary Krasovic <gkrasovic@gmail.com> in conjunction wth PSH
+# Written by: Gary Krasovic <gkrasovic at gmail.com> in conjunction wth PSH
 #
 
 
