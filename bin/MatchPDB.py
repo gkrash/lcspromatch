@@ -70,264 +70,165 @@ localDistCap = 99999 # Eventually we want to flip this back to 13 (angstroms), b
 def distFunc(x1,y1,z1,x2,y2,z2):
     return(math.pow(math.pow((x1-x2),2) + math.pow((y1-y2),2) + math.pow((z1-z2),2), .5))
 
-# I'm doing this  with separate associatave arrays, because it's simpler for now.
-protein1 = {}
-protein2 = {}
+# Converted the whole protein init / import process to a sub, hopefully this will make it easier to read.
+def initProtein(proteinId):
 
-protein1['name'] = os.path.splitext(os.path.basename(proteinId1))[0]
-protein1['serial'] = []
-protein1['residueSeq'] = []
-protein1['x'] = []
-protein1['y'] = []
-protein1['z'] = []
-protein1['size'] = 0
-protein1['source'] = [] # we're going to pull the whole thing into an object too
+    myProtein = {} # Initialize the map
 
-protein2['name'] = os.path.splitext(os.path.basename(proteinId2))[0]
-protein2['serial'] = []
-protein2['residueSeq'] = []
-protein2['x'] = []
-protein2['y'] = []
-protein2['z'] = []
-protein2['size'] = 0
-protein2['source'] = [] # we're going to pull the whole thing into an object too
+    # Init the variables stored in the map
+    myProtein['name'] = os.path.splitext(os.path.basename(proteinId))[0] # The name of the protein dervied from the filename
+    myProtein['serial'] = [] # Array of serial numbers of c-alphas found
+    myProtein['residueSeq'] = [] # Array of residue numbers of c-alphas found
+    myProtein['x'] = [] # Array of x-coords of c-alphas found
+    myProtein['y'] = [] # Array of y-coords of c-alphas found
+    myProtein['z'] = [] # Array of z-coordsd of c-alphas found
+    myProtein['size'] = 0 # Size of the protein (in number of c-alphas found)
+    myProtein['source'] = [] # Source of all c-alphas found
+    myProtein['distMat'] = [] # The internal protein pairwise distance matrix.. we only initialize it here.
 
+    myProtein['matchedSubsequence'] = [] # The subsequence matched within the protein, we'll populate this as we go
 
-# Here lies our load code - again, obtuse, but for simplicity.
+    with open(proteinId, 'r') as f:
 
-# infile = inpath + proteinId1 + '.brk'
-infile = proteinId1
+        c = 0 # Counter variable
 
-with open(infile, 'r') as f:
+        for line in f:
+            # If the line is an atomic backbone structure line...
 
-    c = 0 # Counter variable
+            if (line[0:5] == 'ATOM ' and line[12:16] == ' CA '):
+                # Read the variables in
+                myProtein['source'].append(line.rstrip())
+                serial = "".join(line[6:11].split())
+                residueSeq = "".join(line[22:26].split())
+                x = float("".join(line[30:37].split()))
+                y = float("".join(line[38:45].split()))
+                z = float("".join(line[46:53].split()))
 
-    for line in f:
-        # If the line is an atomic backbone structure line...
+                # And append them to the protein
+                myProtein['serial'].append(serial)
+                myProtein['residueSeq'].append(residueSeq)
+                myProtein['x'].append(x)
+                myProtein['y'].append(y)
+                myProtein['z'].append(z)
+                c = c + 1 # Increment the counter by 1 - size will be len+1
+                myProtein['size'] = c
+    f.close()
 
-        if (line[0:5] == 'ATOM ' and line[12:16] == ' CA '):
-            protein1['source'].append(line.rstrip())
-            serial = "".join(line[6:11].split())
-            residueSeq = "".join(line[22:26].split())
-            x = float("".join(line[30:37].split()))
-            y = float("".join(line[38:45].split()))
-            z = float("".join(line[46:53].split()))
-            protein1['serial'].append(serial)
-            protein1['residueSeq'].append(residueSeq)
-            protein1['x'].append(x)
-            protein1['y'].append(y)
-            protein1['z'].append(z)
-            c = c + 1 # Increment the counter by 1.
-            protein1['size'] = c
-f.close()
+    return myProtein
 
-# infile = inpath + proteinId2 + '.brk'
-infile = proteinId2
+# Sub to calcuate error threshold, for easy editing.
+def calcErrorThreshold(seqLen):
+    return (((seqLen + 1) * (seqLen / 2)) * (1.1 * 1.1))
 
-with open(infile, 'r') as f:
+# Sub to calculate the pairwise distance matrix for a given protein.
+def calcPairwiseDistanceMatrix(protein):
 
-    c = 0 # Counter variable
+    for row in range(0,len(protein['serial'])):
+        protein['distMat'].append([])
+        for col in range(0,len(protein['serial'])):
+            x1 = protein['x'][row]
+            y1 = protein['y'][row]
+            z1 = protein['z'][row]
+            x2 = protein['x'][col]
+            y2 = protein['y'][col]
+            z2 = protein['z'][col]
+            # Determine the distance between the two C-alphas (backbones)
+            protein['distMat'][row].append(distFunc(x1,y1,z1,x2,y2,z2))
 
-    for line in f:
-        # If the line is an atomic backbone structure line...
+# Read in the two proteins that we have.
+p1 = initProtein(proteinId1)
+p2 = initProtein(proteinId2)
 
-        if (line[0:5] == 'ATOM ' and line[12:16] == ' CA '):
-            protein2['source'].append(line.rstrip())
-            serial = "".join(line[6:11].split())
-            residueSeq = "".join(line[22:26].split())
-            x = float("".join(line[30:37].split()))
-            y = float("".join(line[38:45].split()))
-            z = float("".join(line[46:53].split()))
-            protein2['serial'].append(serial)
-            protein2['residueSeq'].append(residueSeq)
-            protein2['x'].append(x)
-            protein2['y'].append(y)
-            protein2['z'].append(z)
-            c = c + 1 # Increment the counter by 1.
-            protein2['size'] = c
-f.close()
-
-# At this point our proteins are loaded, and we can continue on to produce our
-# matricies
-
-#Protein1PairwiseMatrix is called p1pwm - convention follows for Protein 2
-# I'm still being somewhat obtuse with how we're doing this, I depended arrays a lot
-# simply because they're fast to address and add to.
+# Now we need to calculate the internal distance matrix within protein 1 and protein 2
+calcPairwiseDistanceMatrix(p1)
+calcPairwiseDistanceMatrix(p2)
 
 
-p1pwm = []
-for row in range(0,protein1['size']):
-    p1pwm.append([])
-    for col in range(0,protein1['size']):
-        x1 = protein1['x'][row]
-        y1 = protein1['y'][row]
-        z1 = protein1['z'][row]
-        x2 = protein1['x'][col]
-        y2 = protein1['y'][col]
-        z2 = protein1['z'][col]
-        # Determine the distance between the two C-alphas (backbones)
-        p1pwm[row].append(distFunc(x1,y1,z1,x2,y2,z2))
 
-p2pwm = []
-for row in range(0,protein2['size']):
-    p2pwm.append([])
-    for col in range(0,protein2['size']):
-        x1 = protein2['x'][row]
-        y1 = protein2['y'][row]
-        z1 = protein2['z'][row]
-        x2 = protein2['x'][col]
-        y2 = protein2['y'][col]
-        z2 = protein2['z'][col]
-        # Determine the distance between the two C-alphas (backbones)
-        p2pwm[row].append(distFunc(x1,y1,z1,x2,y2,z2))
+gcss = [] # gcss is Greatest Common SubSequence
+gcssErr = []
 
-# Now that we have our pairwise matricies, we can produce the greatest common
-# subsequence matrices.  The naming convention we will use will be:
-# gcsSequence[p1][p2] = [se,qu,en,ce]
-# gcsSeqLen[p1][p2] = int(sequenceLength)
-# gcsSeqErr[p1][p2] = float(totalSequenceError)
+# Every c-alpha in p1 is a 'row' in our gcss table
+for row in range(0,len(p1['serial'])):
+    print("CA " + str(row+1) + " of " + str(len(p1['serial'])+1))
+    gcss.append([])
+    gcssErr.append([])
 
-gcsSequence = []
-gcsSeqLen = []
-gcsSeqErr = []
+    # Every c-alpha in p2 is a 'col' in our gcss table
+    for col in range(0,len(p2['serial'])):
 
-for row in range(0,protein1['size']):
-    gcsSequence.append([])
-    gcsSeqLen.append([])
-    gcsSeqErr.append([])
+        # Create the column (and thereby the cell)
+        gcss[row].append([])
+        gcssErr[row].append([])
 
-    for col in range(0,protein2['size']):
+        # just to get this out of the way, we get the up and side match-lengths
 
-        # Add a sequence array to this cell so we can append to it.
-        gcsSequence[row].append([])
+        # Init to zero so we don't choose them if we're in a 0 row/col
+        uLen = 0
+        sLen = 0
 
-        # Now for the cell p1,p2, we need to determine, out of the 4 options,
-        # the most locally viable extension, given an error floor of errLim
-        p1x = protein1['x'][row]
-        p1y = protein1['y'][row]
-        p1z = protein1['z'][row]
-        p2x = protein2['x'][col]
-        p2y = protein2['y'][col]
-        p2z = protein2['z'][col]
+        if(row > 0):
+            uLen = len(gcss[row-1][col])
+        if(col > 0):
+            sLen = len(gcss[row][col-1])
 
-        # Get Len / Err of the left cell
-        if(col > 0): # So we don't go left if we're *on* the left.
-            leftErr = gcsSeqErr[row][col-1]
-            leftLen = gcsSeqLen[row][col-1]
+        # Now, for the diagonal
+
+        dErr = 0 # Error for the match stored in the diagnoal
+        dLen = 0 # Length of the match stored in the current diagnoal
+        dSeq = [] # Sequence from the diagonal
+        nErr = 0 # The new error from adding in in next pair of carbon-alphas from p1 and p2
+
+        # Make sure we're in a cell that *has* a diagonal to extend from
+        if((col > 0) and (row > 0)):
+
+            # gcss[row-1][col-1] is the matched subsequence from the upper right cell, as a list of pairs
+            # dSeq is the actual match sequence stored in the diagonal
+            dSeq = gcss[row-1][col-1]
+
+            dLen = len(dSeq)
+
+            # gcssErr[row-1][col-1] is the currently matched subsequence error from the diagonal
+            dErr = gcssErr[row-1][col-1]
+
+            # Calculate our error threshold
+            eThresh = calcErrorThreshold(dLen)
+
+            # This calculates nErr
+            for idx in range(0,dLen):
+
+                p1Atom,p2Atom = dSeq[idx] # Pull the internal indexes for each atom within our aligned structures.
+
+                # calculate the distance between the current atoms we want to add and the one we're targeting from the existing structure.
+                p1AtomDist = p1['distMat'][row][p1Atom]
+                p2AtomDist = p2['distMat'][col][p2Atom]
+
+                # Only want to add to the error if we're lower than the localDistCap
+                if(p1AtomDist <= localDistCap and p2AtomDist <= localDistCap):
+                    nErr += math.pow(abs(p1AtomDist - p2AtomDist), 2) # Finally, compare the distances between the two atoms and add the square of that in.
+                else:
+                    continue
+
+
+
+        # Calculate the error threshold..
+        errThresh = calcErrorThreshold(dLen)
+
+        # If the error is less than our threshold, extend the existing alignment from the diagnoal, adding in the new row,col
+        # Because of the way that dErr and nErr are designed, if this is a 0 row or col,
+        if((dErr + nErr) <= errThresh):
+            gcssErr[row][col] = dErr + nErr
+            gcss[row][col] = dSeq[:] + [[row, col]] # Python normally operates on lists by reference, the colon makes it copy..
+
+        # Or else, if the side alignment length is longer than the one above, copy it  (and it's error) into the current cell.
+        elif(uLen < sLen):
+            gcssErr[row][col] = gcssErr[row][col-1]
+            gcss[row][col] = gcss[row][col-1][:] # Python normally operates on lists by reference, the colon makes it copy..
+
+        # Lastly, if nothing else, copy from above.
         else:
-            leftErr = 0
-            leftLen = -1
-
-        # Get Len / Err of the upper cell
-        if(row > 0): # So we don't go left if we're *on* the left.
-            upErr = gcsSeqErr[row-1][col]
-            upLen = gcsSeqLen[row-1][col]
-        else:
-            upErr = 0
-            upLen = -1
-
-        # Get Len / Err of extending from the diagonal
-        if(row > 0 and col > 0):
-            diagLen = gcsSeqLen[row-1][col-1] + 1
-
-            # So here, we need to compare the shortest intra-atom distance in both molecules
-            # "row" is the index of the new atom in p1, "col" is the index of the new atom in p2.
-            # Adding that error to that which was previously calculated - we only need to add in a single new atom from each protein, since we have
-            # made reasonably optimal decisions previously.
-
-            # This line figures out the difference between the current and previous backbones in p1, compared with the current and previous backbones in p2.
-            myErr = abs(p1pwm[row][row-1] - p2pwm[col][col-1])
-
-            if( myErr > errLim):
-                diagLen = 0 # Simple way of saying "don't do this if the error is too great"
-            else:
-                diagErr = myErr + gcsSeqErr[row-1][col-1]
-
-        # slightly confusing, but.. do this if we're in the first row or col..
-        else:
-            diagErr = 0
-            diagLen = -1
-
-        # We also need to check all of these against the current cell as it stands.
-        if(row > 0 and col > 0):
-            selfLen = 1 # if we pick this, we've got at least a length of 1
-            selfErr = abs(p1pwm[row][row-1] - p2pwm[col][col-1])
-
-        # if we're in the first row or col, don't do anything at all..
-        else:
-            selfErr = 0
-            selfLen = 0
-
-        # Now we need to build out a list of the options so we can max() it
-
-        # print(leftErr, upErr, diagErr, selfErr)
-        extension = [[selfLen,selfErr,'self'],[leftLen,leftErr,'left'],[upLen,upErr,'up'],[diagLen,diagErr,'diag']]
-
-        # Now we can do this fanciness to get max length FIRST with min error for that max length.
-        # TODO: This is really a place that we can look to make some improvements
-        foundLen,foundErr,direction = max(extension, key=lambda x: (x[0],-x[1]))
-
-        gcsSeqLen[row].append(foundLen)
-        gcsSeqErr[row].append(foundErr)
-
-        # print(direction,row,col, foundErr)
-        # Now we just need to populate the other arrays.
-        if(direction == 'left'):
-            gcsSequence[row][col] = []
-            gcsSequence[row][col] += gcsSequence[row][col - 1]
-
-        elif(direction == 'up'):
-            gcsSequence[row][col] = []
-            gcsSequence[row][col] += gcsSequence[row - 1][col]
-
-        elif(direction == 'diag'):
-            gcsSequence[row][col] = []
-            gcsSequence[row][col] += gcsSequence[row-1][col-1]
-            gcsSequence[row][col].append([row,col])
-
-        elif(direction == 'self'):
-            gcsSequence[row][col] = [[row,col]]
-
-    # if(row==0): print(gcsSequence[row])
-
-
-
-
-
-# output a selection of atoms in PDB format, from each structure so that we can import to PyMOL for analysis
-# We'll also pull the coordinates for the matched proteins in both, so that we can do our RMSD calculation on them.
-# This will output in the 'tmp' folder in the root of the project.
-
-outfile1 = tmpdir + os.sep + protein1['name'] + "-aligned.pdb"
-outfile2 = tmpdir + os.sep + protein2['name'] + "-aligned.pdb"
-print(outfile1)
-
-with open(outfile1, 'w') as f1, open(outfile2, 'w') as f2:
-    for idx in range(0,len(gcsSequence[protein1['size']-1][protein2['size']-1])):
-        p1idx,p2idx = gcsSequence[protein1['size']-1][protein2['size']-1][idx]
-        f1.write(protein1['source'][p1idx]+'\n')
-        f2.write(protein2['source'][p2idx]+'\n')
-f1.close()
-f2.close()
-
-
-    # print(protein1['residueSeq'][p1idx], protein1['residueSeq'][p2idx])
-
-
-# Error calculations
-e = np.array(gcsSeqErr)
-e.flatten()
-errorMean = str(np.mean(e))
-errorStdDev = str(np.std(e))
-
-print("Protein 1 backbone length: " + str(protein1['size']))
-print("Protein 2 backbone length " + str(protein2['size']))
-# print("Longest common set of backbones: " + str(len(gcsSequence[protein1['size']-1][protein2['size']-1])))
-# pprint.pprint(gcsSeqErr)
-
-
-# Get info about a particular CA Atom...
-#getAtomInfo(protein1,267)
+            gcssErr[row][col] = gcssErr[row-1][col]
+            gcss[row][col] = gcss[row-1][col][:] # Python normally operates on lists by reference, the colon makes it copy..
 
 # Print out distance info
 # getDistanceInfo()
