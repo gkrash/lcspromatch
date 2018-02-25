@@ -62,7 +62,8 @@ script, proteinId1, proteinId2 = argv
 errLim = .04185371 # experimetally derived from the test proteins -
 
 
-# This is our error function, since we will likely be modifying that some:
+
+# This is the function that measures distance between 2 atoms
 def distFunc(x1,y1,z1,x2,y2,z2):
     return(math.pow(math.pow((x1-x2),2) + math.pow((y1-y2),2) + math.pow((z1-z2),2), .5))
 
