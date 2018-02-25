@@ -11,11 +11,6 @@
 # For squaring and the like.
 import math
 
-# For pretty-printing output only.
-import pprint
-import numpy as np
-
-
 # Needed for command line stuff
 from sys import argv
 import inspect, os
@@ -336,10 +331,7 @@ for row in range(0,protein1['size']):
     # if(row==0): print(gcsSequence[row])
 
 
-# print(np.matrix(gcsSeqLen))
-# print(np.matrix(gcsSeqErr))
 
-chainSize = str(len(gcsSequence[protein1['size']-1][protein2['size']-1]))
 
 
 # output a selection of atoms in PDB format, from each structure so that we can import to PyMOL for analysis
