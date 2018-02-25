@@ -230,6 +230,25 @@ for row in range(0,len(p1['serial'])):
             gcssErr[row][col] = gcssErr[row-1][col]
             gcss[row][col] = gcss[row-1][col][:] # Python normally operates on lists by reference, the colon makes it copy..
 
-# Print out distance info
-# getDistanceInfo()
-print(chainSize + "," + errorMean)
+
+# output a selection of atoms in PDB format, from each structure so that we can import to PyMOL for analysis
+# We'll also pull the coordinates for the matched proteins in both, so that we can do our RMSD calculation on them.
+# This will output in the 'tmp' folder in the root of the project.
+
+outfile1 = tmpdir + os.sep + p1['name'] + "-aligned.pdb"
+outfile2 = tmpdir + os.sep + p2['name'] + "-aligned.pdb"
+
+with open(outfile1, 'w') as f1, open(outfile2, 'w') as f2:
+    for idx in range(0,len(gcss[p1['size']-1][p2['size']-1])):
+        p1idx,p2idx = gcss[p1['size']-1][p2['size']-1][idx]
+        f1.write(p1['source'][p1idx]+'\n')
+        f2.write(p2['source'][p2idx]+'\n')
+f1.close()
+f2.close()
+
+# Calculate and print the max length chain size
+chainSize = str(len(gcss[-1][-1])) # a -1 index means "last" in python
+print("Alignment Size: ", chainSize)
+print("Alignments saved as:")
+print(outfile1)
+print(outfile2)
