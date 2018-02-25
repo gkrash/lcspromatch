@@ -59,8 +59,11 @@ script, proteinId1, proteinId2 = argv
 # So I pulled this number from some statistical analysis on the 1AON_A and 1AON_H proteins
 # It's the mean difference in intra-CA distance (0.023567944) plus a standard deviation (0.018285768)
 # Theory is that if we have a situation where it's a standard deviation above the mean, we're in a weird situation and should gap.
-errLim = .04185371 # experimetally derived from the test proteins -
+# errLim = .04185371 # This was a broken way of doing this..
+errLim = 9999 # garbage value for now.
 
+# This defines a local distance for our distance calculations, providing a local limit
+localDistCap = 99999 # Eventually we want to flip this back to 13 (angstroms), but not for now.
 
 
 # This is the function that measures distance between 2 atoms
