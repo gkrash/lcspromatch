@@ -67,50 +67,6 @@ errLim = .04185371 # experimetally derived from the test proteins -
 def distFunc(x1,y1,z1,x2,y2,z2):
     return(math.pow(math.pow((x1-x2),2) + math.pow((y1-y2),2) + math.pow((z1-z2),2), .5))
 
-# A quick sub to get "next" and "previous" info for a given CA.. called at the end.
-def getAtomInfo(protein, number):
-    myID = number - 1
-    name = protein['name']
-    index = protein['serial'][myID]
-    residue = protein['residueSeq'][myID]
-
-    p1distanceFromPrevious = 0
-    p1distanceFromNext = 0
-    p2distanceFromPrevious = 0
-    p2distanceFromNext = 0
-
-    if(myID > 0):
-        p1distanceFromPrevious = p1pwm[myID][myID-1]
-        p2distanceFromPrevious = p2pwm[myID][myID-1]
-
-    if(myID < protein['size'] - 1):
-        p1distanceFromNext = p1pwm[myID][myID+1]
-        p2distanceFromNext = p2pwm[myID][myID+1]
-
-    print("Protein Name: ",name)
-    print("Index: ",index)
-    print("Residue Number: ", residue)
-    print("Distances from Previous: ", p1distanceFromPrevious, ", ", p2distanceFromPrevious)
-    print("Distances from Next: ", p1distanceFromNext, ", ", p2distanceFromNext)
-
-
-# Sub to print out a list of intra-CA distances, along with a sum of the error for each..
-# Maybe this will provide some numberic insight as to what we want to see.
-def getDistanceInfo():
-    p1name = proteinId1
-    p2name = proteinId1
-
-    totDist = 0
-    for idx in range(1,protein1['size']):
-        resi = protein1['residueSeq'][idx]
-
-        # TODO: Eventually may want to fix this so it works on a "generic" protein so they don't have to be the same length
-        distFromPrevResi1 = p1pwm[idx-1][idx]
-        distFromPrevResi2 = p2pwm[idx-1][idx]
-        # totDist = totDist + distToNextResi
-        print(str(resi) + "," + str(distFromPrevResi1) + "," + str(distFromPrevResi2))
-
-
 # I'm doing this  with separate associatave arrays, because it's simpler for now.
 protein1 = {}
 protein2 = {}
